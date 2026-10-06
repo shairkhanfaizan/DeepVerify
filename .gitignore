@@ -62,8 +62,17 @@ coverage.xml
 *.cover
 *.py,cover
 
-# Datasets & Media Files (NEVER commit raw or large data)
-data/
+# Datasets & Media Files (NEVER commit raw or large media)
+# data/raw/, data/processed/, and data/metadata/ are ignored — they contain raw images and
+# large binary assets that must never enter the repository.
+# data/splits/ is NOT ignored: immutable split manifests (lightweight CSV/JSON) are
+# version-controlled so that reproducibility and remote/Colab execution are guaranteed.
+# NOTE: Git cannot un-ignore a path inside a fully-ignored parent directory.
+# Therefore we ignore each heavy subdirectory explicitly rather than using a blanket data/.
+# Raw image binaries and archives must NEVER be placed under data/splits/.
+data/raw/
+data/processed/
+data/metadata/
 datasets/
 raw_data/
 *.mp4

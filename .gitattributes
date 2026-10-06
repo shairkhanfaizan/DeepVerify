@@ -1,0 +1,3 @@
+
+# Split manifests use CRLF line endings as generated — treat as binary to preserve SHA-256.
+data/splits/*.csv  -text  -whitespace

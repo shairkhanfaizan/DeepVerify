@@ -71,26 +71,35 @@ To ensure full research reproducibility per `.agents/rules/ml.md`, every acquire
 
 ## 3. DIRECTORY & DATA CONTRACT
 
-In accordance with `.gitignore`, raw media, processed tensors, and dataset folders **MUST NEVER** be committed to Git. The local/Colab data directory layout is structured as follows:
+Raw media, processed tensors, and large binary assets **MUST NEVER** be committed to Git.
+`data/raw/`, `data/processed/`, and `data/metadata/` are ignored by `.gitignore`.
+
+`data/splits/` is **version-controlled**: immutable split manifests are lightweight CSV/JSON
+files (no images, no binaries) that must be available from Git to guarantee reproducibility
+and to support remote/Colab execution where the working tree is not available.
+Raw image binaries and archives must never be placed under `data/splits/`.
+
+The local/Colab data directory layout is as follows:
 
 ```
-data/                                # Strictly ignored in .gitignore
-├── raw/                             # Pristine downloaded archives and extracted files
+data/
+├── raw/                             # IGNORED — pristine downloaded archives and extracted files
 │   ├── 140k/
 │   │   ├── real/
 │   │   └── fake/
 │   ├── cifake/                      # (Acquired only when executing TBD-011)
 │   └── ffpp/                        # (Deferred to Phase 6)
-├── processed/                       # Standardized resized crops ready for DataLoader
+├── processed/                       # IGNORED — standardized resized crops ready for DataLoader
 │   └── 140k_224x224/
 │       ├── real/
 │       └── fake/
-├── splits/                          # Immutable split manifest files (CSV / JSON)
+├── splits/                          # TRACKED — immutable split manifests (CSV / JSON)
 │   ├── 140k-split-v1.0.csv          # Maps filepath -> label -> split (train/val/test)
 │   └── ffpp-video-splits.json       # (Deferred to Phase 6; video-level partition)
-└── metadata/
-    └── checksums.sha256             # Integrity hashes of raw archives and splits
+└── metadata/                        # IGNORED — integrity checksums and metadata
+    └── checksums.sha256
 ```
+
 
 ---
 
@@ -288,7 +297,7 @@ Phase 2 Data & ML Pipeline Contract and Implementation are verified when the fol
 
 - [x] **Inventory Complete:** 140k, CIFAKE, and FF++ documented with modalities, purposes, and boundary scopes.
 - [x] **Lineage Protocol Established:** Provenance manifest schema defined with checksums and sample counts; lineage recorded at `docs/research/manifests/140k-lineage.json`.
-- [x] **Directory Layout Contracted:** Uncommitted `data/` structure defined and respected without committing unversioned media to Git.
+- [x] **Directory Layout Contracted:** `data/raw/`, `data/processed/`, and `data/metadata/` are ignored by `.gitignore` and no raw media is committed. `data/splits/` is version-controlled: immutable split manifests (lightweight CSV, no image binaries) are tracked in Git to guarantee reproducibility and remote/Colab execution.
 - [x] **Split & Leakage Invariants Formalized & Verified:** Split ratios (70/15/15, 98k/21k/21k), pre-augmentation splitting (seed 42), exact duplicate content hashing (SHA-256 cross-split disjointness), and 50/50 class balance verified.
 - [x] **Preprocessing Parity Implemented:** Canonical 224×224 ImageNet normalization pipeline implemented (`ml/deepverify_ml/preprocessing/pipeline.py`) with training-only augmentations (flip $p=0.5$, rotation $\pm 10^\circ$, jitter $\pm 0.1$) and strictly deterministic validation/test/inference evaluation.
 - [x] **M0 Boundary Constrained:** EfficientNet-B0 spatial baseline strictly isolated from frequency models, ensembles, video, Grad-CAM, and APIs.
