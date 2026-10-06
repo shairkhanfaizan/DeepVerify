@@ -1,0 +1,125 @@
+# ==============================================================================
+# DeepVerify .gitignore
+# ==============================================================================
+
+# Local Agent Tooling (Preserve rules, ignore local skills)
+.agents/skills/
+!.agents/rules/
+
+# Secrets & Environment Variables
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# Python & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing & Linting Caches
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Datasets & Media Files (NEVER commit raw or large data)
+data/
+datasets/
+raw_data/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.h5
+*.hdf5
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+
+# Model Weights & Checkpoints (NEVER commit model weights)
+weights/
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+*.ckpt
+*.pkl
+*.pickle
+
+# ML Experiment Logs & Tracking
+runs/
+wandb/
+mlruns/
+lightning_logs/
+logs/
+*.log
+
+# Frontend & Node
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/.cache/
+.npm/
+.pnpm-store/
+.yarn/
+*.tsbuildinfo
+
+# OS & Editor Artifacts
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

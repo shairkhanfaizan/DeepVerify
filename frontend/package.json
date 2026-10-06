@@ -1,0 +1,12 @@
+{
+  "name": "deepverify-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "DeepVerify React/Vite/TypeScript media verification dashboard",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  }
+}
