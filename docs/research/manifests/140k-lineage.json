@@ -1,0 +1,45 @@
+{
+  "dataset_id": "140k-real-and-fake-faces",
+  "dataset_version": "unknown",
+  "source_url": "https://www.kaggle.com/datasets/xhlulu/140k-real-and-fake-faces",
+  "acquisition_date": "2026-10-06T09:05:27Z",
+  "acquisition_method": "kaggle-api",
+  "archive_filename": "140k-real-and-fake-faces.zip",
+  "archive_sha256": "ddaec55d781628e9f356543aa05c4946c3e6670b9232998b538579332ce6929f",
+  "source_dataset_original_structure": {
+    "note": "The Kaggle-provided dataset contains pre-existing train/valid/test subdirectories. These folder assignments are recorded here as provenance metadata only. They are NOT used as the DeepVerify experimental split.",
+    "source_train": 100000,
+    "source_valid": 20000,
+    "source_test": 20000
+  },
+  "extracted_sample_counts": {
+    "total": 140000,
+    "real": 70000,
+    "fake": 70000
+  },
+  "corrupt_rejected_count": 0,
+  "usable_sample_count": 140000,
+  "exact_duplicate_groups": 0,
+  "exact_duplicate_hashing_algorithm": "SHA-256",
+  "near_duplicate_check": "NOT performed \u2014 near-duplicate / identity-level leakage is a formally documented Phase 2 research limitation (data-contract.md \u00a74.4).",
+  "deepverify_split": {
+    "note": "Generated independently from the source dataset folder structure using a deterministic stratified algorithm on the full 140k pool.",
+    "split_version": "split-v1.0",
+    "split_seed": 42,
+    "split_algorithm": "sklearn.model_selection.StratifiedShuffleSplit",
+    "split_fractions": {
+      "train": 0.7,
+      "val": 0.15,
+      "test": 0.15
+    },
+    "split_counts": {
+      "train": 98000,
+      "val": 21000,
+      "test": 21000
+    },
+    "split_class_balance": "stratified \u2014 50% real / 50% fake in each split",
+    "split_manifest_path": "data/splits/140k-split-v1.0.csv",
+    "split_manifest_sha256": "f9bef275982fb9f6c8c58cbea4e5e2885019417a71324e4fe716fe39384de466"
+  },
+  "preprocessing_version": "prep-v1.0"
+}

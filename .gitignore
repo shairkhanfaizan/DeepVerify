@@ -39,13 +39,15 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual Environments
+# Virtual Environments (includes uv-managed ml/.venv)
 venv/
 .venv/
 env/
 ENV/
 env.bak/
 venv.bak/
+# NOTE: uv.lock IS committed — it is the reproducible dependency lockfile for the ml/ package.
+
 
 # Testing & Linting Caches
 .pytest_cache/
