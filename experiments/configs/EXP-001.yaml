@@ -1,0 +1,62 @@
+experiment:
+  id: "EXP-001-spatial-baseline"
+  name: "Initial EfficientNet-B0 spatial baseline on the 140k Real/Fake Faces dataset"
+  description: "Initial EfficientNet-B0 spatial baseline on the 140k Real/Fake Faces dataset. This experiment exists to establish the first measurable spatial-domain baseline for DeepVerify."
+  seed: 42
+
+dataset:
+  name: "140k-real-and-fake-faces"
+  version: "1.0"
+  split_manifest: "data/splits/140k-split-v1.0.csv"
+  split_manifest_sha256: "f9bef275982fb9f6c8c58cbea4e5e2885019417a71324e4fe716fe39384de466"
+  labels: ["FAKE", "REAL"]
+
+model:
+  architecture: "efficientnet-b0"
+  pretrained: true
+  pretrained_weights: "IMAGENET1K_V1"
+  num_classes: 2
+  dropout: 0.2
+
+preprocessing:
+  input_size: [224, 224]
+  normalization_mean: [0.485, 0.456, 0.406]
+  normalization_std: [0.229, 0.224, 0.225]
+  deterministic_validation: true
+  deterministic_test: true
+
+augmentation:
+  enabled_for_train: true
+  horizontal_flip_probability: 0.5
+  rotation_degrees: 10.0
+  brightness_jitter: 0.1
+  contrast_jitter: 0.1
+
+training:
+  batch_size: 64
+  epochs: 10
+  optimizer: "AdamW"
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  loss: "CrossEntropyLoss"
+  scheduler: "CosineAnnealingLR"
+  mixed_precision: true
+
+runtime:
+  device_policy: "cuda_if_available_else_cpu"
+  expected_environment: "Google Colab (Zero-Cost Tier) / Local GPU"
+
+artifacts:
+  experiment_output_structure: "experiments/runs/EXP-001/<run_id>/"
+  config_snapshot: "config.yaml"
+  checkpoint_naming_convention: "model_best.pth, model_final.pth"
+  metrics_output: "metrics.json"
+
+evaluation:
+  required_metrics:
+    - "Accuracy"
+    - "Precision"
+    - "Recall"
+    - "F1"
+    - "ROC-AUC"
+    - "Confusion Matrix"
