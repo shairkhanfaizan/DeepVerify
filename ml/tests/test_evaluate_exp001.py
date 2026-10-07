@@ -56,7 +56,6 @@ def mock_dataloader():
 @patch("evaluate_exp001.build_model_from_config")
 def test_evaluation_success(mock_build_model, mock_build_dl, mock_repo_root, tmp_path):
     repo_root, run_dir, config = setup_mock_run_dir(tmp_path)
-    mock_repo_root.__class__ = Path
     
     with patch("evaluate_exp001.REPO_ROOT", repo_root):
         # Mock model to return deterministic logits
