@@ -11,8 +11,6 @@ from torch.utils.data import Dataset, DataLoader
 
 from deepverify_ml.preprocessing.pipeline import preprocess_image
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-
 class DeepVerifyManifestDataset(Dataset):
     """
     Dataset driven strictly by a canonical Phase 2 CSV manifest.
@@ -23,7 +21,7 @@ class DeepVerifyManifestDataset(Dataset):
         "real": 1
     }
     
-    def __init__(self, config: dict, split: str):
+    def __init__(self, config: dict, split: str, repo_root: Path = None):
         """
         Initializes the dataset from configuration and split ('train', 'val', 'test').
         """
@@ -35,11 +33,20 @@ class DeepVerifyManifestDataset(Dataset):
             
         self.is_training = (split == "train")
         
+        if repo_root is None:
+            import os
+            if "DEEPVERIFY_REPO_ROOT" in os.environ:
+                self.repo_root = Path(os.environ["DEEPVERIFY_REPO_ROOT"])
+            else:
+                self.repo_root = Path.cwd()
+        else:
+            self.repo_root = Path(repo_root)
+            
         dataset_cfg = config["dataset"]
         manifest_rel_path = dataset_cfg["split_manifest"]
         expected_sha = dataset_cfg["split_manifest_sha256"]
         
-        manifest_path = REPO_ROOT / manifest_rel_path
+        manifest_path = self.repo_root / manifest_rel_path
         
         if not manifest_path.is_file():
             raise FileNotFoundError(f"Manifest missing: {manifest_path}")
@@ -83,7 +90,7 @@ class DeepVerifyManifestDataset(Dataset):
         
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         sample = self.samples[idx]
-        image_path = REPO_ROOT / sample["filepath"]
+        image_path = self.repo_root / sample["filepath"]
         
         # Canonical preprocessing (uses config's augmentation on 'train' split)
         # Note: input_size/mean/std are hardcoded in preprocessing pipeline as ImageNet constants,
@@ -99,11 +106,11 @@ class DeepVerifyManifestDataset(Dataset):
         return tensor, label
 
 
-def build_dataloader_from_config(config: dict, split: str) -> DataLoader:
+def build_dataloader_from_config(config: dict, split: str, repo_root: Path = None) -> DataLoader:
     """
     Constructs a PyTorch DataLoader for the given split using EXP-001 config.
     """
-    dataset = DeepVerifyManifestDataset(config, split)
+    dataset = DeepVerifyManifestDataset(config, split, repo_root=repo_root)
     
     train_cfg = config["training"]
     batch_size = train_cfg["batch_size"]
@@ -119,3 +126,4 @@ def build_dataloader_from_config(config: dict, split: str) -> DataLoader:
         pin_memory=False,
         drop_last=False
     )
+
