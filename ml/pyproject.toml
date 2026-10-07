@@ -38,6 +38,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["deepverify_ml"]
 
+[tool.hatch.build.targets.editable]
+packages = ["deepverify_ml"]
+
 [tool.uv.sources]
 # Override torch to CUDA wheel index when training on GPU (override locally as needed):
 # torch = { index = "https://download.pytorch.org/whl/cu121" }
