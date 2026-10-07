@@ -6,6 +6,7 @@ and artifact management for EXP-001.
 """
 
 import os
+import sys
 import json
 import yaml
 import time
@@ -138,10 +139,14 @@ class DeepVerifyTrainer:
             dataloader, 
             desc=f"Epoch {epoch}/{epochs} [Train]", 
             leave=False, 
-            dynamic_ncols=True
+            dynamic_ncols=True,
+            file=sys.stdout
         )
         
         for batch_idx, (inputs, targets) in enumerate(pbar):
+            if (batch_idx + 1) % 100 == 0:
+                print(f"Heartbeat: Epoch {epoch}/{epochs} [Train] - Batch {batch_idx + 1}/{len(dataloader)}", flush=True)
+                
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
             optimizer.zero_grad()
@@ -196,11 +201,15 @@ class DeepVerifyTrainer:
             dataloader, 
             desc=f"Epoch {epoch}/{epochs} [Val  ]", 
             leave=False, 
-            dynamic_ncols=True
+            dynamic_ncols=True,
+            file=sys.stdout
         )
         
         with torch.no_grad():
-            for inputs, targets in pbar:
+            for batch_idx, (inputs, targets) in enumerate(pbar):
+                if (batch_idx + 1) % 100 == 0:
+                    print(f"Heartbeat: Epoch {epoch}/{epochs} [Val  ] - Batch {batch_idx + 1}/{len(dataloader)}", flush=True)
+                    
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
                 
                 # We do not use autocast in eval to ensure stable deterministic fp32 results

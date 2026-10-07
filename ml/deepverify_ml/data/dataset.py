@@ -118,12 +118,18 @@ def build_dataloader_from_config(config: dict, split: str, repo_root: Path = Non
     # Shuffle only on train
     shuffle = (split == "train")
     
+    num_workers = train_cfg.get("num_workers", 4)
+    device_policy = config.get("runtime", {}).get("device_policy", "cuda_if_available_else_cpu")
+    pin_memory = (device_policy == "cuda_if_available_else_cpu" and torch.cuda.is_available())
+    persistent_workers = (num_workers > 0)
+    
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
-        num_workers=0,  # Single-threaded for simplicity/compatibility in tests
-        pin_memory=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=persistent_workers,
         drop_last=False
     )
 
