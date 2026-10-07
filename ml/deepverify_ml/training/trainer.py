@@ -15,6 +15,8 @@ import random
 from pathlib import Path
 from typing import Dict, Any, Tuple
 
+from tqdm.auto import tqdm
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -122,7 +124,9 @@ class DeepVerifyTrainer:
         dataloader: DataLoader, 
         optimizer: torch.optim.Optimizer, 
         criterion: nn.Module, 
-        scaler: GradScaler
+        scaler: GradScaler,
+        epoch: int = 1,
+        epochs: int = 1
     ) -> Tuple[float, float]:
         
         model.train()
@@ -130,7 +134,14 @@ class DeepVerifyTrainer:
         correct = 0
         total = 0
         
-        for batch_idx, (inputs, targets) in enumerate(dataloader):
+        pbar = tqdm(
+            dataloader, 
+            desc=f"Epoch {epoch}/{epochs} [Train]", 
+            leave=False, 
+            dynamic_ncols=True
+        )
+        
+        for batch_idx, (inputs, targets) in enumerate(pbar):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             
             optimizer.zero_grad()
@@ -157,6 +168,12 @@ class DeepVerifyTrainer:
             correct += (preds == targets).sum().item()
             total += inputs.size(0)
             
+            pbar.set_postfix({
+                "loss": f"{total_loss/total:.4f}",
+                "acc": f"{correct/total:.4f}"
+            })
+            
+        pbar.close()
         epoch_loss = total_loss / total
         epoch_acc = correct / total
         return epoch_loss, epoch_acc
@@ -165,7 +182,9 @@ class DeepVerifyTrainer:
         self, 
         model: nn.Module, 
         dataloader: DataLoader, 
-        criterion: nn.Module
+        criterion: nn.Module,
+        epoch: int = 1,
+        epochs: int = 1
     ) -> Tuple[float, float]:
         
         model.eval()
@@ -173,8 +192,15 @@ class DeepVerifyTrainer:
         correct = 0
         total = 0
         
+        pbar = tqdm(
+            dataloader, 
+            desc=f"Epoch {epoch}/{epochs} [Val  ]", 
+            leave=False, 
+            dynamic_ncols=True
+        )
+        
         with torch.no_grad():
-            for inputs, targets in dataloader:
+            for inputs, targets in pbar:
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
                 
                 # We do not use autocast in eval to ensure stable deterministic fp32 results
@@ -186,6 +212,12 @@ class DeepVerifyTrainer:
                 correct += (preds == targets).sum().item()
                 total += inputs.size(0)
                 
+                pbar.set_postfix({
+                    "loss": f"{total_loss/total:.4f}",
+                    "acc": f"{correct/total:.4f}"
+                })
+                
+        pbar.close()
         epoch_loss = total_loss / total
         epoch_acc = correct / total
         return epoch_loss, epoch_acc
@@ -249,17 +281,19 @@ class DeepVerifyTrainer:
         best_val_loss = float('inf')
         
         for epoch in range(1, epochs + 1):
+            epoch_start = time.time()
             self.log(f"--- Epoch {epoch}/{epochs} ---")
             
-            train_loss, train_acc = self.train_one_epoch(model, train_loader, optimizer, criterion, scaler)
-            val_loss, val_acc = self.validate_one_epoch(model, val_loader, criterion)
+            train_loss, train_acc = self.train_one_epoch(model, train_loader, optimizer, criterion, scaler, epoch, epochs)
+            val_loss, val_acc = self.validate_one_epoch(model, val_loader, criterion, epoch, epochs)
             
             scheduler.step()
+            epoch_duration = time.time() - epoch_start
             
             current_lr = scheduler.get_last_lr()[0]
             self.record_metrics(epoch, train_loss, train_acc, val_loss, val_acc, current_lr)
             
-            self.log(f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Acc: {val_acc:.4f} | LR: {current_lr:.6f}")
+            self.log(f"Epoch {epoch} Summary: Duration {epoch_duration:.2f}s | Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f} Acc: {val_acc:.4f} | LR: {current_lr:.6f}")
             
             if val_loss < best_val_loss:
                 self.log(f"Validation loss improved from {best_val_loss:.4f} to {val_loss:.4f}. Saving best model.")
