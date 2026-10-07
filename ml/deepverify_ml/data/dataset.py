@@ -118,7 +118,7 @@ def build_dataloader_from_config(config: dict, split: str, repo_root: Path = Non
     # Shuffle only on train
     shuffle = (split == "train")
     
-    num_workers = train_cfg.get("num_workers", 4)
+    num_workers = train_cfg.get("num_workers", 2)
     device_policy = config.get("runtime", {}).get("device_policy", "cuda_if_available_else_cpu")
     pin_memory = (device_policy == "cuda_if_available_else_cpu" and torch.cuda.is_available())
     persistent_workers = (num_workers > 0)
