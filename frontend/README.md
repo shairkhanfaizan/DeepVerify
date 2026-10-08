@@ -1,9 +1,32 @@
-# DeepVerify Frontend
+# React + TypeScript + Vite
 
-The DeepVerify frontend is a modern React web application built with Vite and TypeScript.
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
-## Responsibilities & Boundaries
-* **Pure API Consumer:** Communicates solely with the backend via versioned endpoints (`/api/v1/`).
-* **Zero Secrets:** Contains NO private API keys, database credentials, or model weights.
-* **Explainability UX:** Renders media upload interfaces, per-frame confidence charts, video timeline scrubbing, and Grad-CAM interpretability overlays.
-* **Responsible Communication:** Follows `.agents/rules/confidence.md` — never makes absolute binary claims of "real/fake" without statistical calibration and appropriate disclaimers.
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the Oxlint configuration
+
+If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+
+```json
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  }
+}
+```
+
+See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
