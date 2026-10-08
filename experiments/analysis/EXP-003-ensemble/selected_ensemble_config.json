@@ -1,0 +1,18 @@
+{
+    "selected_weight": 0.6,
+    "selection_metric": "F1",
+    "validation_score": 0.9990004283878338,
+    "rationale": "Selected strictly on validation set F1 performance",
+    "best_accuracy_weight": 0.6,
+    "best_roc_auc_weight": 0.9,
+    "experiment_metadata": {
+        "exp001_run_id": "run_20261007_141902_9e04eeda",
+        "exp001_ckpt_sha256": "b05a302c9283783fdc7352abe967baa4e4ab278028a2ba08cf40bd290e521d03",
+        "exp002_run_id": "run_20261008_080128_559d2631",
+        "exp002_ckpt_sha256": "507f9d6cf9aadc633d336f236df140555f4847fdc29697a8fc576a3fe3aa4c52",
+        "dataset_version": "140k Real and Fake Faces v1.0",
+        "frozen_manifest_sha256": "f9bef275982fb9f6c8c58cbea4e5e2885019417a71324e4fe716fe39384de466",
+        "validation_split_samples": 21000,
+        "test_split_samples": 21000
+    }
+}

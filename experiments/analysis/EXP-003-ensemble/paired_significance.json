@@ -1,0 +1,52 @@
+{
+    "contingency_table": {
+        "a_both_correct": 20977,
+        "b_m1_correct_ens_wrong": 1,
+        "c_m1_wrong_ens_correct": 8,
+        "d_both_wrong": 14
+    },
+    "statistical_tests": {
+        "mcnemar_exact_p_value": 0.0390625,
+        "mcnemar_asymptotic_chi2": 4.0
+    },
+    "metrics": {
+        "exp001_accuracy": 0.9989523809523809,
+        "exp003_accuracy": 0.9992857142857143,
+        "accuracy_difference": 0.00033333333333340764,
+        "exp001_errors": 22,
+        "exp003_errors": 15,
+        "net_error_reduction": 7,
+        "exp001_roc_auc": 0.9999947120181406,
+        "exp003_roc_auc": 0.9998716734693878
+    },
+    "class_conditional_transitions": {
+        "ALL": {
+            "correct_to_correct": 20977,
+            "correct_to_wrong": 1,
+            "wrong_to_correct": 8,
+            "wrong_to_wrong": 14
+        },
+        "FAKE": {
+            "correct_to_correct": 10483,
+            "correct_to_wrong": 1,
+            "wrong_to_correct": 5,
+            "wrong_to_wrong": 11
+        },
+        "REAL": {
+            "correct_to_correct": 10494,
+            "correct_to_wrong": 0,
+            "wrong_to_correct": 3,
+            "wrong_to_wrong": 3
+        }
+    },
+    "experiment_metadata": {
+        "exp001_run_id": "run_20261007_141902_9e04eeda",
+        "exp001_ckpt_sha256": "b05a302c9283783fdc7352abe967baa4e4ab278028a2ba08cf40bd290e521d03",
+        "exp002_run_id": "run_20261008_080128_559d2631",
+        "exp002_ckpt_sha256": "507f9d6cf9aadc633d336f236df140555f4847fdc29697a8fc576a3fe3aa4c52",
+        "dataset_version": "140k Real and Fake Faces v1.0",
+        "frozen_manifest_sha256": "f9bef275982fb9f6c8c58cbea4e5e2885019417a71324e4fe716fe39384de466",
+        "validation_split_samples": 21000,
+        "test_split_samples": 21000
+    }
+}

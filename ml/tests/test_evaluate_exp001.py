@@ -82,7 +82,7 @@ def test_evaluation_success(mock_build_model, mock_build_dl, mock_repo_root, tmp
         mock_build_dl.assert_called_once_with(config, split="test", repo_root=repo_root)
         
         # Artifacts should exist
-        eval_dir = run_dir / "evaluation"
+        eval_dir = run_dir / "evaluation_test"
         assert eval_dir.exists()
         assert (eval_dir / "test_metrics.json").exists()
         assert (eval_dir / "confusion_matrix.json").exists()
