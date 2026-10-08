@@ -116,3 +116,32 @@ def test_valid_execution_orchestration(mock_build_loss, mock_build_scheduler, mo
     args, kwargs = mock_trainer.call_args_list[0]
     passed_config = args[0]
     assert passed_config["preprocessing"]["domain"] == "frequency"
+
+@patch("ml.scripts.run_exp002_training.subprocess.run")
+@patch("ml.scripts.run_exp002_training.get_git_commit")
+@patch("ml.scripts.run_exp002_training.hashlib.sha256")
+@patch("ml.scripts.run_exp002_training.DeepVerifyTrainer")
+@patch("ml.scripts.run_exp002_training.build_model_from_config")
+@patch("ml.scripts.run_exp002_training.build_dataloader_from_config")
+@patch("ml.scripts.run_exp002_training.build_optimizer")
+@patch("ml.scripts.run_exp002_training.build_scheduler")
+@patch("ml.scripts.run_exp002_training.build_loss")
+def test_backup_delegation(mock_loss, mock_sched, mock_opt, mock_dl, mock_model, mock_trainer, mock_sha, mock_git, mock_subprocess, valid_config, tmp_path, monkeypatch):
+    monkeypatch.setattr(run_exp002, "REPO_ROOT", tmp_path)
+    mock_sha_obj = MagicMock()
+    mock_sha_obj.hexdigest.return_value = "f9bef275982fb9f6c8c58cbea4e5e2885019417a71324e4fe716fe39384de466"
+    mock_sha.return_value = mock_sha_obj
+    mock_git.return_value = "dummy_commit"
+    monkeypatch.setattr("builtins.print", lambda *a, **k: None)
+    
+    backup_target = "/content/drive/MyDrive/DeepVerify/experiments"
+    run_exp002.run_training(str(valid_config), smoke_test=True, backup_dir=backup_target)
+    
+    mock_subprocess.assert_called_once()
+    call_args = mock_subprocess.call_args[0][0]
+    
+    assert str(tmp_path / "ml/scripts/backup_experiment_artifacts.py") in call_args
+    assert "--experiment" in call_args
+    assert "EXP-002-frequency-baseline" in call_args
+    assert "--destination" in call_args
+    assert backup_target in call_args

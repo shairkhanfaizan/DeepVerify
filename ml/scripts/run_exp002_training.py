@@ -34,7 +34,7 @@ def get_git_commit(repo_root: Path) -> str:
     except Exception:
         return "UNKNOWN"
 
-def run_training(config_path: str, smoke_test: bool = False):
+def run_training(config_path: str, smoke_test: bool = False, backup_dir: str = None):
     print("==================================================")
     print("EXP-002 — REAL TRAINING IMPLEMENTATION")
     print("==================================================")
@@ -202,12 +202,24 @@ def run_training(config_path: str, smoke_test: bool = False):
     print("==================================================")
     print("TRAINING RUNNER VERIFICATION COMPLETE")
     print("==================================================")
+    
+    if backup_dir:
+        print(f"Initiating artifact backup to {backup_dir}...")
+        backup_script = REPO_ROOT / "ml" / "scripts" / "backup_experiment_artifacts.py"
+        subprocess.run([
+            sys.executable, str(backup_script),
+            "--experiment", exp_id,
+            "--run-id", run_id,
+            "--destination", backup_dir
+        ], check=True)
+        print("Backup successfully delegated.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DeepVerify EXP-002 Training Runner")
     parser.add_argument("--config", type=str, default=str(REPO_ROOT / "experiments" / "configs" / "EXP-002.yaml"), help="Path to config yaml")
     parser.add_argument("--smoke-test", action="store_true", help="Run in smoke test mode (bypass count checks, 1 epoch)")
+    parser.add_argument("--backup-dir", type=str, default=None, help="Optional persistent destination directory to backup artifacts")
 
     args = parser.parse_args()
 
-    run_training(args.config, smoke_test=args.smoke_test)
+    run_training(args.config, smoke_test=args.smoke_test, backup_dir=args.backup_dir)
