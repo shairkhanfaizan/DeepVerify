@@ -132,7 +132,8 @@ def to_normalized_array(
 def preprocess_image(
     image_input: Union[str, Path, bytes, io.BytesIO, Image.Image],
     target_size: Tuple[int, int] = TARGET_IMAGE_SIZE,
-    is_training: bool = False
+    is_training: bool = False,
+    normalize: bool = True
 ) -> np.ndarray:
     """
     Canonical end-to-end preprocessing pipeline.
@@ -168,7 +169,12 @@ def preprocess_image(
     # Deterministic spatial transform
     img = resize_and_crop(img, target_size=target_size)
 
-    # Deterministic tensor conversion & normalization
-    tensor_arr = to_normalized_array(img)
+    if normalize:
+        # Deterministic tensor conversion & normalization
+        tensor_arr = to_normalized_array(img)
+    else:
+        # Just convert to float32 [0.0, 1.0] [3, H, W]
+        arr = np.asarray(img, dtype=np.float32) / 255.0
+        tensor_arr = np.transpose(arr, (2, 0, 1))
 
     return tensor_arr

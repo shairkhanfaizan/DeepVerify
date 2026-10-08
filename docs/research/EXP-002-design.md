@@ -122,7 +122,7 @@ Frequency-space augmentation is NOT used in EXP-002 unless explicitly justified 
 The proposed `experiments/configs/EXP-002.yaml` will structurally mirror EXP-001:
 - `experiment.id`: "EXP-002-frequency-baseline"
 - `dataset`: Identical manifest and SHA-256 constraints.
-- `preprocessing`: Will include flags for `domain: frequency`, `transform: log_magnitude_fft`.
+- `preprocessing`: Includes the explicit routing flag `domain: frequency`.
 - `model.architecture`: "efficientnet-b0"
 - `training`: Same optimizer (AdamW), LR (1e-4), Scheduler (CosineAnnealingLR), Batch Size (64), Epochs (10).
 
@@ -148,11 +148,12 @@ Once evaluated, EXP-002 will be compared against EXP-001 using:
 This analysis is the critical prerequisite for justifying a future multi-modal ensemble.
 
 ## 15. Expected Artifacts
+Local artifacts will be written to `experiments/runs/EXP-002/<run_id>/`:
 - `model_best.pth`, `model_final.pth`
 - `config.yaml` snapshot
 - `metrics.json` (training history)
-- `test_metrics.json`
-- `confusion_matrix.json`
+- `run_metadata.json`
+- `training.log`
 
 ## 16. Success Criteria
 
@@ -175,8 +176,9 @@ A strong test score will be treated as evidence of discriminative signal on this
 ## 19. Implementation Plan
 1. Implement `deepverify_ml.preprocessing.frequency` to compute the deterministic FFT pseudo-images.
 2. Write tests ensuring the transform is stable and outputs correct tensor shapes.
-3. Create `EXP-002.yaml`.
-4. Train the model using the existing `run_exp001_training.py` generic architecture (renamed/adapted for general run configs).
+3. Create `experiments/configs/EXP-002.yaml` defining the `preprocessing.domain: frequency`.
+4. Train the model using the dedicated runner script via:
+   `python ml/scripts/run_exp002_training.py --config experiments/configs/EXP-002.yaml`
 5. Evaluate using the standard evaluator.
 
 ## 20. Final Recommendation
