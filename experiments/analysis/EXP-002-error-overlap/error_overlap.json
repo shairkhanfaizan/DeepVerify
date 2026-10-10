@@ -1,0 +1,42 @@
+{
+    "sample_count": 21000,
+    "error_overlap": {
+        "exp1_errors": 22,
+        "exp2_errors": 3837,
+        "shared_errors": 5,
+        "exp1_only_errors": 17,
+        "exp2_only_errors": 3832,
+        "union_errors": 3854,
+        "jaccard_similarity": 0.0012973533990659055
+    },
+    "class_conditional": {
+        "FAKE": {
+            "total": 10500,
+            "exp1_err": 16,
+            "exp2_err": 2179,
+            "shared_err": 4,
+            "exp1_only_err": 12,
+            "exp2_only_err": 2175
+        },
+        "REAL": {
+            "total": 10500,
+            "exp1_err": 6,
+            "exp2_err": 1658,
+            "shared_err": 1,
+            "exp1_only_err": 5,
+            "exp2_only_err": 1657
+        }
+    },
+    "oracle": {
+        "oracle_correct": 20995,
+        "oracle_errors": 5,
+        "oracle_accuracy": 0.9997619047619047,
+        "rescued_by_exp2": 17,
+        "rescued_by_exp1": 3832,
+        "both_wrong": 5
+    },
+    "probability_correlation": {
+        "pearson": 0.6988554000854492,
+        "spearman": 0.6484707928626365
+    }
+}
