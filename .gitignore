@@ -73,6 +73,9 @@ coverage.xml
 data/raw/
 data/processed/
 data/metadata/
+data/samples/video/
+test_videos/
+test_venv/
 datasets/
 raw_data/
 *.mp4
@@ -134,3 +137,32 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# DeepVerify V2 specific temporary exclusions
+deepverify-models/
+DeepVerify revised designs/
+stitch_deepverify_forensic_workstation (4)/
+storage/
+backend/storage/
+backend/deepverify_v2_backup.sql
+backend/eng.traineddata
+frontend/public/images/*.temp
+backend/ocr.js
+backend/ocr2.js
+backend/ocr3.js
+backend/test_api*.py
+backend/test_auth.py
+backend/test_httpx.py
+backend/query_db*.py
+backend/rewrite_*.py
+backend/create_user*.py
+frontend/patch_*.py
+frontend/replace.py
+frontend/fix_workbench.py
+frontend/generate_compare.py
+patch_terms.py
+patch_vault.py
+patch_workbench.py
+verify_workflow.py
+scripts/evaluate_video_models.py
+scripts/generate_test_videos.py
