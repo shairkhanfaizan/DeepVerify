@@ -35,6 +35,8 @@ When proposing an architectural decision, create a new markdown file named `XXXX
 | [ADR-002](ADR-002-training-inference-separation.md) | Training / Inference Separation | Foundation |
 | [ADR-003](ADR-003-api-versioning.md) | API Versioning Strategy (`/api/v1/`) | Foundation |
 | [ADR-004](ADR-004-model-artifact-storage.md) | Model Artifact Storage (Preferred: Hugging Face Hub) | Foundation |
+| [ADR-006](ADR-006-v2-domain-model-postgresql.md) | V2 Domain Model & PostgreSQL Persistence | Phase 1 |
+| [ADR-007](ADR-007-server-side-forensic-reporting.md) | Server-Side Forensic PDF Report Generation | Phase 14 |
 
 ### Proposed / Under Evaluation (TBD)
 
