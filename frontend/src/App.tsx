@@ -26,14 +26,17 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="investigations" element={<Investigations />} />
+              <Route path="cases" element={<Investigations />} />
               <Route path="vault" element={<Vault />} />
 
               <Route path="comparison" element={<InvestigationComparison />} />
+              <Route path="compare" element={<InvestigationComparison />} />
               <Route path="reports" element={<ReportsFindings />} />
               <Route path="settings" element={<Settings />} />
 
               {/* Case-specific routes */}
               <Route path="investigation/:id" element={<InvestigationResult />} />
+              <Route path="case/:id" element={<InvestigationResult />} />
               <Route path="investigation/:id/compare" element={<InvestigationComparison />} />
               <Route path="investigation/:id/evidence/:evidenceId" element={<ForensicWorkbench />} />
               <Route path="investigation/:id/report" element={<ReportsFindings />} />

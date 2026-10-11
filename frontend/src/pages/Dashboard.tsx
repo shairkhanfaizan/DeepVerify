@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { fetchApi } from "../services/api";
 import { useNavigate, Link } from "react-router-dom";
-import { Loader2, Upload, TrendingUp, CheckSquare, Bot, Folder, ArrowRight } from "lucide-react";
+import { Loader2, Upload, X, FileImage, Sparkles, ChevronDown } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { SecureImage } from "../components/ui/SecureImage";
 
@@ -13,9 +13,12 @@ interface AnalysisResultResponse {
 
 interface EvidenceItem {
   id: string;
+  name?: string;
+  original_filename?: string;
   status: string;
   created_at: string;
   analysis_results?: AnalysisResultResponse[];
+  observations?: Array<{ signal_type: string; value: string }>;
 }
 
 interface InvestigationListResponse {
@@ -23,31 +26,83 @@ interface InvestigationListResponse {
   title: string;
   status: string;
   created_at: string;
+  updated_at?: string;
   evidence_items?: EvidenceItem[];
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function fmtDate(t: any): string {
+  if (!t) return "—";
+  const d = new Date(t);
+  if (isNaN(d.getTime())) return "—";
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function timeAgo(t: any): string {
+  if (!t) return "just now";
+  const diffMs = Date.now() - new Date(t).getTime();
+  const diffMins = Math.round(diffMs / 60000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins} min ago`;
+  const diffHrs = Math.round(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs} hr ago`;
+  const diffDays = Math.round(diffHrs / 24);
+  return diffDays === 1 ? "Yesterday" : `${diffDays} days ago`;
+}
+
+function getPhotoDisplayName(p: any): string {
+  if (p.name && p.name.trim()) return p.name.trim();
+  if (p.original_filename && p.original_filename.trim()) return p.original_filename.trim();
+  const obs = p.observations?.find((o: any) => o.signal_type === "ORIGINAL_FILENAME" || o.signal_type === "EVIDENCE_NAME");
+  if (obs?.value && obs.value.trim()) return obs.value.trim();
+  return `Photo (${p.id.slice(0, 8)})`;
+}
+
+const TIPS = [
+  "AI faces often get ears, teeth and earrings slightly wrong. Zoom in on them!",
+  "Text inside AI images (signs, shirts, posters) is often gibberish.",
+  "Too perfect? Real photos have little flaws – AI skin often looks airbrushed.",
+  "Check the hands. AI still struggles with fingers.",
+  "A scary or shocking photo spreading fast? Scan it before you share it."
+];
+
 export function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [investigations, setInvestigations] = useState<InvestigationListResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [timeframe, setTimeframe] = useState<7 | 14 | 30>(14);
-  const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tip of the session
+  const [tip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]);
+
+  // Upload modal states
+  const [selectedFileForUpload, setSelectedFileForUpload] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [photoName, setPhotoName] = useState("");
+  const [targetCaseId, setTargetCaseId] = useState<string>("__new");
+  const [newCaseName, setNewCaseName] = useState("");
+  const [showNameModal, setShowNameModal] = useState(false);
+
+  // Interactive line chart tooltip state
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const loadData = async () => {
     try {
       setLoading(true);
       const data = await fetchApi("/api/v2/investigations/");
-      
       const detailedPromises = (data || []).map((inv: any) =>
         fetchApi(`/api/v2/investigations/${inv.id}`).catch(() => null)
       );
       const detailed = await Promise.all(detailedPromises);
       setInvestigations(detailed.filter(Boolean));
     } catch (err: unknown) {
-      console.error(err);
+      console.error("Failed to load dashboard data:", err);
     } finally {
       setLoading(false);
     }
@@ -57,27 +112,52 @@ export function Dashboard() {
     loadData();
   }, []);
 
-  const handleFileDrop = async (file: File) => {
+  const handleFileDrop = (file: File) => {
+    const cleanName = file.name.replace(/\.[^.]+$/, "");
+    setSelectedFileForUpload(file);
+    setPhotoName(cleanName);
+    setNewCaseName("Case: " + cleanName);
+    setTargetCaseId("__new");
+    setPreviewUrl(URL.createObjectURL(file));
+    setShowNameModal(true);
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!selectedFileForUpload) return;
     try {
       setCreating(true);
-      const invData = await fetchApi("/api/v2/investigations/", {
-        method: "POST",
-        body: JSON.stringify({ title: "Quick Scan", notes: "Initiated from Dashboard upload" }),
-      });
-      const invId = invData.id;
+      let invId = targetCaseId;
+      if (invId === "__new") {
+        const invData = await fetchApi("/api/v2/investigations/", {
+          method: "POST",
+          body: JSON.stringify({ 
+            title: newCaseName.trim() || photoName.trim() || "Case: " + selectedFileForUpload.name, 
+          }),
+        });
+        invId = invData.id;
+      }
 
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", selectedFileForUpload);
+      formData.append("name", photoName.trim() || selectedFileForUpload.name.replace(/\.[^.]+$/, ""));
       
       const evData = await fetchApi(`/api/v2/investigations/${invId}/evidence`, {
         method: "POST",
         body: formData,
       });
       
-      if (evData.evidence_id) {
-         navigate(`/investigation/${invId}/evidence/${evData.evidence_id}`);
+      setShowNameModal(false);
+      setSelectedFileForUpload(null);
+
+      if (evData.evidence_id || evData.id) {
+        const evId = evData.evidence_id || evData.id;
+        fetchApi(`/api/v2/investigations/${invId}/evidence/${evId}/analyze`, {
+          method: "POST",
+          body: JSON.stringify({ policy: "ensemble-v1.0" })
+        }).catch(console.error);
+        navigate(`/investigation/${invId}/evidence/${evId}`);
       } else {
-         navigate(`/investigation/${invId}`);
+        navigate(`/investigation/${invId}`);
       }
     } catch (err) {
       console.error(err);
@@ -110,169 +190,181 @@ export function Dashboard() {
     if (file) handleFileDrop(file);
   };
 
-  // Metrics Logic
-  let photosChecked = 0;
-  let lookedReal = 0;
-  let likelyAi = 0;
-  let notSure = 0;
-  let casesWithPhotos = 0;
-  
-  // Data grouping for line chart
-  const timeSeriesData: Record<string, { real: number, ai: number, notSure: number, timestamp: number }> = {};
-  
-  const now = new Date();
-  const cutoffTime = now.getTime() - (timeframe * 24 * 60 * 60 * 1000);
+  // Flatten all photos from all investigations
+  const allPhotos: Array<{
+    id: string;
+    caseId: string;
+    caseName: string;
+    name: string;
+    status: string;
+    createdAt: string;
+    score: number | null;
+    ai: number;
+    verdictKey: "real" | "warn" | "ai" | "wait";
+    verdictLabel: string;
+    verdictEmoji: string;
+    raw: any;
+  }> = [];
 
-  investigations.forEach(inv => {
-    if (inv.evidence_items && inv.evidence_items.length > 0) {
-      casesWithPhotos++;
-      inv.evidence_items.forEach(ev => {
-        if (ev.status === "COMPLETED" && ev.analysis_results && ev.analysis_results.length > 0) {
-          photosChecked++;
-          const result = ev.analysis_results[0];
-          const score = result.ensemble_score;
-          
-          // UI display convention mapping; score boundaries are descriptive, not scientifically absolute
-          let cat: "real" | "ai" | "notSure";
-          if (score >= 0.6) {
-            lookedReal++;
-            cat = "real";
-          } else if (score <= 0.4) {
-            likelyAi++;
-            cat = "ai";
-          } else {
-            notSure++;
-            cat = "notSure";
-          }
+  investigations.forEach((inv) => {
+    (inv.evidence_items || []).forEach((ev) => {
+      const auth = ev.analysis_results?.[0]?.ensemble_score ?? null;
+      let ai = 50;
+      let verdictKey: "real" | "warn" | "ai" | "wait" = "wait";
+      let verdictLabel = "Scanning";
+      let verdictEmoji = "⏳";
 
-          // Track for chart by day, using actual analysis completion time if available
-          const resultTime = result.created_at ? new Date(result.created_at) : new Date(ev.created_at || inv.created_at);
-          
-          if (resultTime.getTime() >= cutoffTime) {
-            const dateStr = resultTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            if (!timeSeriesData[dateStr]) {
-              timeSeriesData[dateStr] = { real: 0, ai: 0, notSure: 0, timestamp: new Date(resultTime.getFullYear(), resultTime.getMonth(), resultTime.getDate()).getTime() };
-            }
-            timeSeriesData[dateStr][cat]++;
-          }
+      if (ev.status === "COMPLETED" && auth !== null) {
+        ai = Math.round((1 - auth) * 100);
+        if (ai >= 65) {
+          verdictKey = "ai";
+          verdictLabel = "Likely AI-made";
+          verdictEmoji = "🤖";
+        } else if (ai >= 35) {
+          verdictKey = "warn";
+          verdictLabel = "Not sure";
+          verdictEmoji = "🤔";
+        } else {
+          verdictKey = "real";
+          verdictLabel = "Looks real";
+          verdictEmoji = "✅";
         }
+      }
+
+      allPhotos.push({
+        id: ev.id,
+        caseId: inv.id,
+        caseName: inv.title || "Untitled Case",
+        name: getPhotoDisplayName(ev),
+        status: ev.status,
+        createdAt: ev.created_at || inv.created_at,
+        score: auth,
+        ai,
+        verdictKey,
+        verdictLabel,
+        verdictEmoji,
+        raw: ev
       });
-    }
+    });
   });
 
-  const totalCases = investigations.length;
-  const realPercentage = photosChecked > 0 ? Math.round((lookedReal / photosChecked) * 100) : 0;
-  const aiPercentage = photosChecked > 0 ? Math.round((likelyAi / photosChecked) * 100) : 0;
+  const completedPhotos = allPhotos.filter((p) => p.status === "COMPLETED");
+  const countReal = completedPhotos.filter((p) => p.verdictKey === "real").length;
+  const countWarn = completedPhotos.filter((p) => p.verdictKey === "warn").length;
+  const countAi = completedPhotos.filter((p) => p.verdictKey === "ai").length;
+  const totalCompleted = completedPhotos.length;
 
-  // Donut chart logic (SVG)
-  const donutSize = 140;
-  const strokeWidth = 16;
-  const radius = (donutSize - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  
-  const totalAnalyzed = (lookedReal + likelyAi + notSure) || 1;
-  const realRatio = lookedReal / totalAnalyzed;
-  const notSureRatio = notSure / totalAnalyzed;
-  const aiRatio = likelyAi / totalAnalyzed;
-  
-  const realLen = realRatio * circumference;
-  const notSureLen = notSureRatio * circumference;
-  const aiLen = aiRatio * circumference;
-  
-  const realDasharray = `${realLen} ${circumference}`;
-  const notSureDasharray = `${notSureLen} ${circumference}`;
-  const aiDasharray = `${aiLen} ${circumference}`;
-  
-  const realOffset = 0;
-  const notSureOffset = -realLen;
-  const aiOffset = -(realLen + notSureLen);
+  const realRate = totalCompleted ? Math.round((countReal / totalCompleted) * 100) : 0;
+  const aiRate = totalCompleted ? Math.round((countAi / totalCompleted) * 100) : 0;
 
-  // Bottom sections logic
-  const busiestCases = [...investigations]
-    .map(inv => ({
+  // Week-over-week calculation matching deepverify-app/page-home.js
+  const WEEK_MS = 7 * 864e5;
+  const nowMs = Date.now();
+  const thisWeekCount = completedPhotos.filter((p) => new Date(p.createdAt).getTime() > nowMs - WEEK_MS).length;
+  const lastWeekCount = completedPhotos.filter(
+    (p) =>
+      new Date(p.createdAt).getTime() <= nowMs - WEEK_MS &&
+      new Date(p.createdAt).getTime() > nowMs - 2 * WEEK_MS
+  ).length;
+  const diff = thisWeekCount - lastWeekCount;
+
+  const casesWithPhotos = investigations.filter((inv) => inv.evidence_items && inv.evidence_items.length > 0).length;
+
+  // Latest checks (6 items)
+  const recentPhotos = [...allPhotos]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 6);
+
+  // Greeting logic matching deepverify-app/page-home.js
+  const hr = new Date().getHours();
+  const greeting =
+    hr < 5
+      ? "Burning the midnight oil"
+      : hr < 12
+      ? "Good morning"
+      : hr < 17
+      ? "Good afternoon"
+      : "Good evening";
+
+  const firstName =
+    localStorage.getItem("deepverify_user_name") || user?.email?.split("@")[0] || "Faizan";
+
+  // Daily time series for line chart matching deepverify-app/charts.js
+  const dailyData: Array<{ t: number; dateStr: string; real: number; warn: number; ai: number }> = [];
+  const startDay = new Date();
+  startDay.setHours(0, 0, 0, 0);
+  const startDayMs = startDay.getTime();
+
+  for (let i = timeframe - 1; i >= 0; i--) {
+    const dayTimestamp = startDayMs - i * 864e5;
+    const dayEnd = dayTimestamp + 864e5;
+    const inDay = completedPhotos.filter((p) => {
+      const pt = new Date(p.createdAt).getTime();
+      return pt >= dayTimestamp && pt < dayEnd;
+    });
+
+    const dayDate = new Date(dayTimestamp);
+    const dateStr = `${dayDate.getDate()} ${MONTHS[dayDate.getMonth()]}`;
+    dailyData.push({
+      t: dayTimestamp,
+      dateStr,
+      real: inDay.filter((p) => p.verdictKey === "real").length,
+      warn: inDay.filter((p) => p.verdictKey === "warn").length,
+      ai: inDay.filter((p) => p.verdictKey === "ai").length
+    });
+  }
+
+  // SVG Line Chart Dimension matching DV.lineChart (W: 700, H: 280, pl: 36, pr: 14, pt: 16, pb: 30)
+  const W = 700;
+  const H = 280;
+  const pl = 36;
+  const pr = 14;
+  const pt = 16;
+  const pb = 30;
+
+  const maxDaily = Math.max(
+    3,
+    ...dailyData.map((d) => Math.max(d.real, d.warn, d.ai))
+  );
+  const topDaily = Math.ceil(maxDaily / 2) * 2;
+
+  const getX = (i: number) => pl + (i * (W - pl - pr)) / (dailyData.length - 1 || 1);
+  const getY = (v: number) => pt + (1 - v / topDaily) * (H - pt - pb);
+
+  const buildPath = (key: "real" | "warn" | "ai") =>
+    dailyData.map((d, i) => `${i ? "L" : "M"}${getX(i).toFixed(1)},${getY(d[key]).toFixed(1)}`).join(" ");
+
+  const buildArea = (key: "real" | "warn" | "ai") =>
+    `${buildPath(key)} L${getX(dailyData.length - 1)},${H - pb} L${getX(0)},${H - pb} Z`;
+
+  // Donut chart calculations matching DV.donut (R: 70, CIRC: 2 * PI * 70 = 439.82)
+  const R_DONUT = 70;
+  const CIRC_DONUT = 2 * Math.PI * R_DONUT;
+  const totalForDonut = totalCompleted || 1;
+  const realLen = totalCompleted ? (countReal / totalForDonut) * CIRC_DONUT : 0;
+  const warnLen = totalCompleted ? (countWarn / totalForDonut) * CIRC_DONUT : 0;
+  const aiLen = totalCompleted ? (countAi / totalForDonut) * CIRC_DONUT : 0;
+
+  // Busiest cases top 5 matching DV.vbars
+  const busiestCasesList = [...investigations]
+    .map((inv) => ({
       name: inv.title || "Untitled",
       count: (inv.evidence_items || []).length
     }))
-    .filter(c => c.count > 0)
     .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
-  const maxBusiest = Math.max(1, ...busiestCases.map(c => c.count));
+    .slice(0, 5);
 
-  const allEvidence = investigations.flatMap(inv => 
-    (inv.evidence_items || []).filter(ev => ev.status === "COMPLETED").map(ev => ({
-      ...ev,
-      investigation: inv
-    }))
-  );
-  allEvidence.sort((a, b) => {
-    const timeA = a.analysis_results?.[0]?.created_at || a.created_at;
-    const timeB = b.analysis_results?.[0]?.created_at || b.created_at;
-    return new Date(timeB).getTime() - new Date(timeA).getTime();
-  });
-  const latestChecks = allEvidence.slice(0, 3);
-
-  const timeAgo = (dateStr: string) => {
-    const diffMs = new Date().getTime() - new Date(dateStr).getTime();
-    const diffMins = Math.round(diffMs / 60000);
-    if (diffMins < 60) return `${Math.max(1, diffMins)} min ago`;
-    const diffHrs = Math.round(diffMins / 60);
-    if (diffHrs < 24) return `${diffHrs} hours ago`;
-    return `${Math.round(diffHrs / 24)} days ago`;
-  };
-
-  // Line chart logic
-  const sortedDates = Object.keys(timeSeriesData).sort((a, b) => timeSeriesData[a].timestamp - timeSeriesData[b].timestamp);
-  
-  let realPath = "";
-  let aiPath = "";
-  let notSurePath = "";
-  let xLabels = sortedDates;
-  
-  let maxValForChart = 4;
-  if (sortedDates.length > 0) {
-    maxValForChart = Math.max(4, ...sortedDates.map(d => Math.max(timeSeriesData[d].real, timeSeriesData[d].ai, timeSeriesData[d].notSure)));
-    const yRatio = 140 / maxValForChart;
-    
-    if (sortedDates.length === 1) {
-      const metrics = timeSeriesData[sortedDates[0]];
-      const realY = 140 - (metrics.real * yRatio);
-      const aiY = 140 - (metrics.ai * yRatio);
-      const notSureY = 140 - (metrics.notSure * yRatio);
-      
-      realPath = `0,${realY} 100,${realY}`;
-      aiPath = `0,${aiY} 100,${aiY}`;
-      notSurePath = `0,${notSureY} 100,${notSureY}`;
-      
-      xLabels = ["", sortedDates[0], ""];
-    } else {
-      const xStep = 100 / (sortedDates.length - 1);
-      
-      sortedDates.forEach((date, i) => {
-        const x = i * xStep;
-        const metrics = timeSeriesData[date];
-        
-        const realY = 140 - (metrics.real * yRatio);
-        const aiY = 140 - (metrics.ai * yRatio);
-        const notSureY = 140 - (metrics.notSure * yRatio);
-        
-        const prefix = i === 0 ? "" : " ";
-        realPath += `${prefix}${x},${realY}`;
-        aiPath += `${prefix}${x},${aiY}`;
-        notSurePath += `${prefix}${x},${notSureY}`;
-      });
-    }
-  }
-
-  const yLabels = [];
-  for (let i = 4; i >= 0; i--) {
-    yLabels.push(Math.round((maxValForChart / 4) * i));
-  }
-
-  const firstName = user?.email?.split('@')[0] || "Faizan";
+  const maxBusiest = Math.max(1, ...busiestCasesList.map((c) => c.count)) * 1.2;
+  const VB_W = 460;
+  const VB_H = 220;
+  const VB_PL = 28;
+  const VB_PB = 38;
+  const VB_PT = 12;
+  const bw = busiestCasesList.length ? (VB_W - VB_PL) / busiestCasesList.length : 60;
 
   return (
-    <div className="flex flex-col w-full min-h-screen bg-[#0b1426] text-white">
-      {/* Hidden File Input */}
+    <div style={{ minHeight: "100%" }}>
+      {/* Hidden File Input for Native Upload Flow */}
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -281,424 +373,658 @@ export function Dashboard() {
         accept="image/jpeg, image/png, image/webp" 
       />
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-[15px] font-semibold text-[#8b9cb6]">Home</h1>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]"></span>
-            <span className="text-[12px] font-medium text-[#22c55e]">Scanner ready</span>
-          </div>
-          <button 
+      {/* 1. Sticky Top Header Bar matching deepverify-app */}
+      <div className="top">
+        <div className="crumb">
+          <b>Home</b>
+        </div>
+        <div className="top-r">
+          <span className="pill">
+            <i />Scanner ready
+          </span>
+          <button
             onClick={() => fileInputRef.current?.click()}
+            className="btn pri sm flex items-center gap-1.5"
             disabled={creating}
-            className="flex items-center gap-2 bg-[#38bdf8] text-[#090e17] px-4 py-1.5 rounded text-[13px] font-bold hover:bg-[#7dd3fc] transition-colors"
           >
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 inline mr-1" />}
             Check a photo
           </button>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        
-        {/* Top Hero Section */}
-        <div className="bg-[#111a31] rounded-2xl p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-2 gap-8 border border-white/5">
-          <div className="flex flex-col justify-center">
-            <div className="inline-flex items-center gap-1.5 bg-[#1e3a8a]/30 text-[#38bdf8] text-[11px] font-bold px-3 py-1 rounded-full w-fit mb-4 border border-[#38bdf8]/20">
-              <span className="text-[12px]">✨</span> AI PHOTO DETECTIVE
-            </div>
-            
-            <h2 className="text-3xl lg:text-4xl font-bold tracking-tight mb-3">
-              Good morning, <span className="text-[#38bdf8]">{firstName}</span> 👋
-            </h2>
-            
-            <p className="text-[#8b9cb6] text-[15px] leading-relaxed mb-6 max-w-md">
-              Got a photo you're not sure about? Drop it in and we'll tell you if it looks real or AI-made – in about 10 seconds.
-            </p>
-            
-            <div className="bg-[#17254a] border border-[#1e3a8a] rounded-lg p-3 text-[13px] text-[#b0c4de] flex items-start gap-2">
-              <span className="text-[14px]">💡</span>
-              <p>
-                <strong className="text-white font-semibold">Tip:</strong> AI faces often get ears, teeth and earrings slightly wrong. Zoom in on them!
+      <div id="view">
+        <div className="stagger" style={{ display: "grid", gap: "22px" }}>
+
+          {/* Section 1: Hero Strip matching deepverify-app/page-home.js */}
+          <section className="hero">
+            <div>
+              <span className="tag info">✨ AI PHOTO DETECTIVE</span>
+              <h1 style={{ marginTop: "14px" }}>
+                {greeting}, <span className="grad">{firstName}</span> 👋
+              </h1>
+              <p className="lead">
+                Got a photo you're not sure about? Drop it in and we'll tell you if it looks real or AI-made – in about 10 seconds.
+              </p>
+              <p className="sm muted" style={{ marginTop: "18px", padding: "12px 14px", borderRadius: "12px", background: "rgba(56,189,248,.08)", border: "1px solid var(--line)", maxWidth: "520px" }}>
+                💡 <b>Tip:</b> {tip}
               </p>
             </div>
-          </div>
-          
-          <div className="flex items-center justify-center">
-            <div 
+
+            <div
+              className={`drop ${isDragging ? "over" : ""}`}
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
               onDrop={onDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`w-full max-w-md border-[2px] border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-4 cursor-pointer transition-colors group ${
-                isDragging ? "border-[#38bdf8] bg-[#38bdf8]/10" : "border-[#1e3a8a] hover:border-[#38bdf8] bg-[#0a1128]"
-              }`}
+              tabIndex={0}
+              role="button"
+              aria-label="Choose a photo to check"
             >
-              <div className="w-12 h-12 rounded-full bg-[#38bdf8] flex items-center justify-center text-[#090e17] group-hover:scale-110 transition-transform">
-                {creating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+              <div className="big">
+                <svg className="ico" viewBox="0 0 24 24" style={{ width: 28, height: 28, stroke: "#04122b", fill: "none", strokeWidth: 2.2 }}>
+                  <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />
+                </svg>
               </div>
-              <div className="text-center">
-                <p className="text-[15px] font-semibold text-white mb-1">Drop a photo here</p>
-                <p className="text-[12px] text-[#8b9cb6]">or click to browse · JPG, PNG, WebP</p>
+              <h3>Drop a photo here</h3>
+              <p className="muted sm" style={{ margin: "6px 0 16px" }}>
+                or click to browse · JPG, PNG, WebP
+              </p>
+              <span className="btn pri sm">Choose a photo</span>
+            </div>
+          </section>
+
+          {/* Section 2: 4 Stats Cards matching deepverify-app/page-home.js */}
+          <section className="grid g4">
+            <div className="card stat">
+              <div className="ic" style={{ background: "rgba(56,189,248,.12)" }}>🔍</div>
+              <div className="l">Photos checked</div>
+              <div className="n">{loading ? "…" : totalCompleted}</div>
+              <div className="d">
+                {diff >= 0 ? (
+                  <span className="up">▲ {diff} vs last week</span>
+                ) : (
+                  <span className="down">▼ {Math.abs(diff)} vs last week</span>
+                )}
               </div>
-              <button disabled={creating} className="mt-2 bg-[#38bdf8] text-[#090e17] px-6 py-2 rounded-full text-[13px] font-bold">
-                Choose a photo
+            </div>
+
+            <div className="card stat">
+              <div className="ic" style={{ background: "rgba(46,230,166,.12)" }}>✅</div>
+              <div className="l">Looked real</div>
+              <div className="n">{loading ? "…" : countReal}</div>
+              <div className="d">
+                <span className="faint">{totalCompleted ? realRate : 0}% of your photos</span>
+              </div>
+            </div>
+
+            <div className="card stat">
+              <div className="ic" style={{ background: "rgba(251,113,133,.12)" }}>🤖</div>
+              <div className="l">Likely AI-made</div>
+              <div className="n">{loading ? "…" : countAi}</div>
+              <div className="d">
+                <span className="faint">{totalCompleted ? aiRate : 0}% of your photos</span>
+              </div>
+            </div>
+
+            <div className="card stat">
+              <div className="ic" style={{ background: "rgba(251,191,36,.12)" }}>📁</div>
+              <div className="l">Cases</div>
+              <div className="n">{loading ? "…" : investigations.length}</div>
+              <div className="d">
+                <span className="faint">{casesWithPhotos} with photos</span>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 3: Real vs AI over time & What we found matching deepverify-app/page-home.js */}
+          <section className="grid g-main">
+            {/* Left: Real vs AI line chart */}
+            <div className="card glow">
+              <div className="row between" style={{ marginBottom: "6px" }}>
+                <div>
+                  <h2>Real vs AI over time</h2>
+                  <p className="muted sm">How many photos you checked each day</p>
+                </div>
+                <div className="tabs" id="range">
+                  <button className={timeframe === 7 ? "on" : ""} onClick={() => setTimeframe(7)}>7 days</button>
+                  <button className={timeframe === 14 ? "on" : ""} onClick={() => setTimeframe(14)}>14 days</button>
+                  <button className={timeframe === 30 ? "on" : ""} onClick={() => setTimeframe(30)}>30 days</button>
+                </div>
+              </div>
+
+              {/* Dependency-Free Interactive SVG Line Chart matching deepverify-app/charts.js */}
+              <div style={{ position: "relative", marginTop: "8px", minHeight: "280px" }}>
+                <svg
+                  viewBox={`0 0 ${W} ${H}`}
+                  width="100%"
+                  role="img"
+                  aria-label="Photos checked per day"
+                  onPointerMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const px = ((e.clientX - rect.left) / rect.width) * W;
+                    const idx = Math.max(0, Math.min(dailyData.length - 1, Math.round(((px - pl) / (W - pl - pr)) * (dailyData.length - 1))));
+                    setHoverIndex(idx);
+                  }}
+                  onPointerLeave={() => setHoverIndex(null)}
+                >
+                  <defs>
+                    <linearGradient id="ga-real" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#2ee6a6" stopOpacity="0.35" />
+                      <stop offset="1" stopColor="#2ee6a6" stopOpacity="0" />
+                    </linearGradient>
+                    <linearGradient id="ga-warn" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#fbbf24" stopOpacity="0.35" />
+                      <stop offset="1" stopColor="#fbbf24" stopOpacity="0" />
+                    </linearGradient>
+                    <linearGradient id="ga-ai" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#fb7185" stopOpacity="0.35" />
+                      <stop offset="1" stopColor="#fb7185" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Horizontal grid lines & Y labels */}
+                  {[0, 1, 2, 3, 4].map((i) => {
+                    const v = (topDaily / 4) * i;
+                    const yy = getY(v);
+                    return (
+                      <g key={i}>
+                        <line x1={pl} x2={W - pr} y1={yy} y2={yy} stroke="rgba(120,160,255,.14)" />
+                        <text x={pl - 8} y={yy + 4} textAnchor="end" fill="#8da0c4" fontSize="11">
+                          {Math.round(v)}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* Date labels along X axis */}
+                  {dailyData.map((d, i) => {
+                    const step = Math.ceil(dailyData.length / 7);
+                    if (i % step === 0 || i === dailyData.length - 1) {
+                      return (
+                        <text key={i} x={getX(i)} y={H - 8} textAnchor="middle" fill="#8da0c4" fontSize="11">
+                          {d.dateStr}
+                        </text>
+                      );
+                    }
+                    return null;
+                  })}
+
+                  {/* Shaded Areas */}
+                  <path d={buildArea("real")} fill="url(#ga-real)" />
+                  <path d={buildArea("warn")} fill="url(#ga-warn)" />
+                  <path d={buildArea("ai")} fill="url(#ga-ai)" />
+
+                  {/* Smooth Colored Lines */}
+                  <path d={buildPath("real")} fill="none" stroke="#2ee6a6" strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round" />
+                  <path d={buildPath("warn")} fill="none" stroke="#fbbf24" strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round" />
+                  <path d={buildPath("ai")} fill="none" stroke="#fb7185" strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round" />
+
+                  {/* Interactive Guide Line and Dots */}
+                  {hoverIndex !== null && (
+                    <>
+                      <line
+                        x1={getX(hoverIndex)}
+                        x2={getX(hoverIndex)}
+                        y1={pt}
+                        y2={H - pb}
+                        stroke="#fff"
+                        strokeOpacity="0.35"
+                        strokeDasharray="4 4"
+                      />
+                      <circle cx={getX(hoverIndex)} cy={getY(dailyData[hoverIndex].real)} r="5" fill="#2ee6a6" stroke="#050c1d" strokeWidth="2" />
+                      <circle cx={getX(hoverIndex)} cy={getY(dailyData[hoverIndex].warn)} r="5" fill="#fbbf24" stroke="#050c1d" strokeWidth="2" />
+                      <circle cx={getX(hoverIndex)} cy={getY(dailyData[hoverIndex].ai)} r="5" fill="#fb7185" stroke="#050c1d" strokeWidth="2" />
+                    </>
+                  )}
+                </svg>
+
+                {/* Floating Tooltip */}
+                {hoverIndex !== null && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      pointerEvents: "none",
+                      background: "#0a1a3e",
+                      border: "1px solid rgba(120,160,255,.35)",
+                      padding: "10px 12px",
+                      borderRadius: "10px",
+                      fontSize: "12.5px",
+                      whiteSpace: "nowrap",
+                      zIndex: 3,
+                      left: `${Math.min(Math.max(10, (getX(hoverIndex) / W) * 100), 75)}%`,
+                      top: "10px"
+                    }}
+                  >
+                    <b>{dailyData[hoverIndex].dateStr}</b>
+                    <div style={{ color: "var(--real)", marginTop: "4px" }}>● Looks real: <b>{dailyData[hoverIndex].real}</b></div>
+                    <div style={{ color: "var(--warn)" }}>● Not sure: <b>{dailyData[hoverIndex].warn}</b></div>
+                    <div style={{ color: "var(--ai)" }}>● Likely AI-made: <b>{dailyData[hoverIndex].ai}</b></div>
+                  </div>
+                )}
+              </div>
+
+              <div className="row sm muted" style={{ marginTop: "6px", display: "flex", gap: "16px" }}>
+                <span style={{ color: "var(--real)" }}>● Looks real</span>
+                <span style={{ color: "var(--warn)" }}>● Not sure</span>
+                <span style={{ color: "var(--ai)" }}>● Likely AI-made</span>
+              </div>
+            </div>
+
+            {/* Right: What we found donut chart */}
+            <div className="card">
+              <h2>What we found</h2>
+              <p className="muted sm">Share of all your results</p>
+
+              <div style={{ display: "grid", placeItems: "center", margin: "14px 0" }}>
+                <svg viewBox="0 0 200 200" width="100%" style={{ maxWidth: "220px" }} role="img" aria-label="Share of results">
+                  <circle cx="100" cy="100" r={R_DONUT} fill="none" stroke="rgba(120,160,255,.12)" strokeWidth="26" />
+                  {totalCompleted > 0 ? (
+                    <>
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r={R_DONUT}
+                        fill="none"
+                        stroke="#2ee6a6"
+                        strokeWidth="26"
+                        strokeDasharray={`${Math.max(0, realLen - 2)} ${CIRC_DONUT}`}
+                        strokeDashoffset="0"
+                        transform="rotate(-90 100 100)"
+                        className="transition-all duration-700 ease-out"
+                      >
+                        <title>Looks real: {countReal}</title>
+                      </circle>
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r={R_DONUT}
+                        fill="none"
+                        stroke="#fbbf24"
+                        strokeWidth="26"
+                        strokeDasharray={`${Math.max(0, warnLen - 2)} ${CIRC_DONUT}`}
+                        strokeDashoffset={-realLen}
+                        transform="rotate(-90 100 100)"
+                        className="transition-all duration-700 ease-out"
+                      >
+                        <title>Not sure: {countWarn}</title>
+                      </circle>
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r={R_DONUT}
+                        fill="none"
+                        stroke="#fb7185"
+                        strokeWidth="26"
+                        strokeDasharray={`${Math.max(0, aiLen - 2)} ${CIRC_DONUT}`}
+                        strokeDashoffset={-(realLen + warnLen)}
+                        transform="rotate(-90 100 100)"
+                        className="transition-all duration-700 ease-out"
+                      >
+                        <title>Likely AI-made: {countAi}</title>
+                      </circle>
+                    </>
+                  ) : null}
+                  <text x="100" y="102" textAnchor="middle" fill="#fff" fontSize="32" fontWeight="800">
+                    {totalCompleted}
+                  </text>
+                  <text x="100" y="124" textAnchor="middle" fill="#8da0c4" fontSize="12">
+                    photos
+                  </text>
+                </svg>
+              </div>
+
+              <div className="sm" style={{ display: "grid", gap: "8px" }}>
+                <div className="row between">
+                  <span style={{ color: "var(--real)" }}>● Looks real</span>
+                  <b>{countReal}</b>
+                </div>
+                <div className="row between">
+                  <span style={{ color: "var(--warn)" }}>● Not sure</span>
+                  <b>{countWarn}</b>
+                </div>
+                <div className="row between">
+                  <span style={{ color: "var(--ai)" }}>● Likely AI-made</span>
+                  <b>{countAi}</b>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 4: Busiest Cases & Which tools you use matching deepverify-app/page-home.js */}
+          <section className="grid g2">
+            <div className="card">
+              <h2>Busiest cases</h2>
+              <p className="muted sm">Which cases have the most photos</p>
+              
+              <div style={{ marginTop: "12px", minHeight: "220px", display: "grid", placeItems: "center" }}>
+                {busiestCasesList.length > 0 ? (
+                  <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width="100%" role="img" aria-label="Bar chart">
+                    {[0, 1, 2, 3].map((i) => {
+                      const yy = VB_PT + (1 - i / 3) * (VB_H - VB_PT - VB_PB);
+                      return (
+                        <g key={i}>
+                          <line x1={VB_PL} x2={VB_W} y1={yy} y2={yy} stroke="rgba(120,160,255,.14)" />
+                          <text x={VB_PL - 6} y={yy + 4} textAnchor="end" fill="#8da0c4" fontSize="11">
+                            {Math.round((maxBusiest / 3) * i)}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {busiestCasesList.map((it, i) => {
+                      const h = (it.count / maxBusiest) * (VB_H - VB_PT - VB_PB);
+                      const xx = VB_PL + i * bw + bw * 0.2;
+                      const label = it.name.length > 11 ? it.name.slice(0, 10) + "…" : it.name;
+                      return (
+                        <g key={i}>
+                          <rect
+                            x={xx}
+                            y={VB_H - VB_PB - h}
+                            width={bw * 0.6}
+                            height={Math.max(4, h)}
+                            rx="8"
+                            fill="#38bdf8"
+                          >
+                            <title>{it.name}: {it.count}</title>
+                          </rect>
+                          <text x={xx + bw * 0.3} y={VB_H - VB_PB - h - 7} textAnchor="middle" fill="#fff" fontSize="12" fontWeight="700">
+                            {it.count}
+                          </text>
+                          <text x={xx + bw * 0.3} y={VB_H - 14} textAnchor="middle" fill="#8da0c4" fontSize="11.5">
+                            {label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                ) : (
+                  <div className="empty-state" style={{ padding: "30px 10px" }}>
+                    <p>No cases created yet.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="card">
+              <h2>Which tools you use</h2>
+              <p className="muted sm">Every scan runs two checks. The AI Helper answers your questions.</p>
+              
+              <div style={{ marginTop: "18px" }}>
+                {/* Pixel Check */}
+                <div style={{ marginBottom: "16px" }}>
+                  <div className="row between sm" style={{ marginBottom: "7px" }}>
+                    <span>
+                      <b style={{ fontWeight: 600 }}>Pixel Check</b>
+                      <span className="faint"> · looks at tiny details</span>
+                    </span>
+                    <b>{totalCompleted}</b>
+                  </div>
+                  <div className="bar">
+                    <i style={{ width: totalCompleted > 0 ? "100%" : "0%", background: "linear-gradient(90deg,#38bdf8,#22d3ee)" }} />
+                  </div>
+                </div>
+
+                {/* Pattern Check */}
+                <div style={{ marginBottom: "16px" }}>
+                  <div className="row between sm" style={{ marginBottom: "7px" }}>
+                    <span>
+                      <b style={{ fontWeight: 600 }}>Pattern Check</b>
+                      <span className="faint"> · hunts repeating patterns</span>
+                    </span>
+                    <b>{totalCompleted}</b>
+                  </div>
+                  <div className="bar">
+                    <i style={{ width: totalCompleted > 0 ? "100%" : "0%", background: "linear-gradient(90deg,#3b82f6,#38bdf8)" }} />
+                  </div>
+                </div>
+
+                {/* AI Helper */}
+                <div style={{ marginBottom: "16px" }}>
+                  <div className="row between sm" style={{ marginBottom: "7px" }}>
+                    <span>
+                      <b style={{ fontWeight: 600 }}>AI Helper</b>
+                      <span className="faint"> · answers your questions</span>
+                    </span>
+                    <b>{Math.round(totalCompleted * 0.85)}</b>
+                  </div>
+                  <div className="bar">
+                    <i style={{ width: totalCompleted > 0 ? "85%" : "0%", background: "linear-gradient(90deg,#a78bfa,#38bdf8)" }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 5: Latest Checks Table matching deepverify-app/page-home.js */}
+          <section className="card">
+            <div className="row between" style={{ marginBottom: "10px" }}>
+              <div>
+                <h2>Latest checks</h2>
+                <p className="muted sm">Your most recent photos</p>
+              </div>
+              <Link to="/vault" className="btn sm">
+                See all photos{" "}
+                <svg className="ico" viewBox="0 0 24 24" style={{ width: 14, height: 14, marginLeft: 4 }}>
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </Link>
+            </div>
+
+            {recentPhotos.length > 0 ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: "64px" }}></th>
+                    <th>Photo</th>
+                    <th>Case</th>
+                    <th>Checked on</th>
+                    <th>Result</th>
+                    <th>AI chance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentPhotos.map((p) => (
+                    <tr
+                      key={p.id}
+                      onClick={() => navigate(`/investigation/${p.caseId}/evidence/${p.id}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td style={{ width: "64px" }}>
+                        <div className="thumb" style={{ width: "52px", aspectRatio: "1", borderRadius: "10px" }}>
+                          <SecureImage investigationId={p.caseId} evidenceId={p.id} alt={p.name} />
+                        </div>
+                      </td>
+                      <td>
+                        <b>{p.name}</b>
+                      </td>
+                      <td className="muted">{p.caseName}</td>
+                      <td className="muted">
+                        {fmtDate(p.createdAt)}
+                        <br />
+                        <span className="faint sm">{timeAgo(p.createdAt)}</span>
+                      </td>
+                      <td>
+                        <span className={`tag ${p.verdictKey}`}>
+                          {p.verdictEmoji} {p.verdictLabel}
+                        </span>
+                      </td>
+                      <td>
+                        <b>{p.status === "COMPLETED" ? `${p.ai}%` : "—"}</b>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="empty-state">
+                <div className="emo">📸</div>
+                <h3>No photos yet</h3>
+                <p>Drop your first photo above to get started.</p>
+              </div>
+            )}
+          </section>
+
+        </div>
+      </div>
+
+      {/* Name Photo Before Analysis Dialog Modal */}
+      {showNameModal && selectedFileForUpload && (
+        <div className="veil" onClick={() => { setShowNameModal(false); setSelectedFileForUpload(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-[rgba(120,160,255,0.15)] mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#38bdf8]/15 flex items-center justify-center text-[#38bdf8]">
+                  <FileImage className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Name Photo Before Scan</h3>
+                  <p className="text-xs text-[#9fb0cc]">Give your photo a clean name so it is easy to identify</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setShowNameModal(false); setSelectedFileForUpload(null); }}
+                className="text-[#6f82a6] hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Thumbnail preview & name input */}
+            <div className="flex gap-4 items-center bg-[#050c1d] p-3 rounded-xl border border-[rgba(120,160,255,0.1)] mb-4">
+              {previewUrl && (
+                <img 
+                  src={previewUrl} 
+                  alt="Preview" 
+                  className="w-16 h-16 object-cover rounded-lg border border-[rgba(120,160,255,0.2)] shrink-0" 
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <label className="text-[11px] font-semibold text-[#8b9cb6] uppercase tracking-wider block mb-1">
+                  Photo Name
+                </label>
+                <input
+                  type="text"
+                  value={photoName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPhotoName(val);
+                    if (targetCaseId === "__new") {
+                      setNewCaseName("Case: " + val);
+                    }
+                  }}
+                  placeholder="e.g. Profile Picture, Viral Concert Photo"
+                  className="w-full bg-[#0a1530] border border-[rgba(120,160,255,0.2)] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#38bdf8]"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Target Case Selection */}
+            <div className="space-y-3 mb-6">
+              <label className="text-[11px] font-semibold text-[#8b9cb6] uppercase tracking-wider block mb-1">
+                Investigation Destination
+              </label>
+
+              <div className="grid grid-cols-2 gap-2 bg-[#050c1d] p-1 rounded-xl border border-[rgba(120,160,255,0.15)]">
+                <button
+                  type="button"
+                  onClick={() => setTargetCaseId("__new")}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    targetCaseId === "__new"
+                      ? "bg-gradient-to-r from-[#38bdf8] to-[#22d3ee] text-[#050c1d] shadow-[0_0_12px_rgba(56,189,248,0.35)]"
+                      : "text-[#8b9cb6] hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <span>＋ Create New Case</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetCaseId(investigations[0]?.id || "")}
+                  disabled={investigations.length === 0}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    targetCaseId !== "__new"
+                      ? "bg-gradient-to-r from-[#38bdf8] to-[#22d3ee] text-[#050c1d] shadow-[0_0_12px_rgba(56,189,248,0.35)]"
+                      : "text-[#8b9cb6] hover:text-white hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  }`}
+                >
+                  <span>Existing Case</span>
+                  {investigations.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/20 font-mono">
+                      {investigations.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {targetCaseId === "__new" ? (
+                <div>
+                  <label className="text-[#9fb0cc] text-xs font-semibold block mb-1">
+                    New Case Title:
+                  </label>
+                  <input
+                    type="text"
+                    value={newCaseName}
+                    onChange={(e) => setNewCaseName(e.target.value)}
+                    placeholder="e.g. Social Media Verification, ID Card Audit"
+                    className="w-full bg-[#050c20] border border-[rgba(120,160,255,0.25)] focus:border-[#38bdf8] text-white text-sm rounded-xl px-3.5 py-2.5 outline-none transition-colors"
+                  />
+                  <span className="text-[11px] text-[#6f82a6] mt-1 block">
+                    A dedicated new investigation case will be opened for this photo.
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-[#9fb0cc] text-xs font-semibold block mb-1">
+                    Select Existing Case:
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={targetCaseId}
+                      onChange={(e) => setTargetCaseId(e.target.value)}
+                      className="w-full bg-[#050c20] border border-[rgba(120,160,255,0.25)] focus:border-[#38bdf8] text-white text-sm rounded-xl px-3.5 py-2.5 pr-8 appearance-none outline-none cursor-pointer transition-colors"
+                    >
+                      {investigations.map((inv) => (
+                        <option key={inv.id} value={inv.id}>{inv.title}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9fb0cc] pointer-events-none" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="row" style={{ justifyContent: "flex-end", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => { setShowNameModal(false); setSelectedFileForUpload(null); }}
+                className="btn sm"
+                disabled={creating}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmUpload}
+                disabled={creating || !photoName.trim()}
+                className="btn pri sm flex items-center gap-1.5"
+              >
+                {creating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Uploading…</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Start scan →</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
-
-        {/* 4 Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-[#111a31] rounded-xl p-5 border border-white/5 flex flex-col justify-between h-[110px]">
-            <div className="flex items-start justify-between">
-              <span className="text-[13px] text-[#8b9cb6] font-medium">Photos checked</span>
-              <div className="w-7 h-7 rounded-lg bg-[#1e3a8a]/40 flex items-center justify-center text-[#38bdf8]">
-                <Upload className="w-4 h-4" />
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{loading ? '-' : photosChecked}</div>
-              <div className="flex items-center gap-1 text-[11px] text-[#22c55e] mt-1 font-medium">
-                <TrendingUp className="w-3 h-3" />
-                <span>1 vs last week</span>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-[#111a31] rounded-xl p-5 border border-white/5 flex flex-col justify-between h-[110px]">
-            <div className="flex items-start justify-between">
-              <span className="text-[13px] text-[#8b9cb6] font-medium">Looked real</span>
-              <div className="w-7 h-7 rounded-lg bg-[#22c55e]/20 flex items-center justify-center text-[#22c55e]">
-                <CheckSquare className="w-4 h-4" />
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{loading ? '-' : lookedReal}</div>
-              <div className="text-[11px] text-[#8b9cb6] mt-1">
-                {realPercentage}% of your photos
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-[#111a31] rounded-xl p-5 border border-white/5 flex flex-col justify-between h-[110px]">
-            <div className="flex items-start justify-between">
-              <span className="text-[13px] text-[#8b9cb6] font-medium">Likely AI-made</span>
-              <div className="w-7 h-7 rounded-lg bg-[#ec4899]/20 flex items-center justify-center text-[#ec4899]">
-                <Bot className="w-4 h-4" />
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{loading ? '-' : likelyAi}</div>
-              <div className="text-[11px] text-[#8b9cb6] mt-1">
-                {aiPercentage}% of your photos
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-[#111a31] rounded-xl p-5 border border-white/5 flex flex-col justify-between h-[110px]">
-            <div className="flex items-start justify-between">
-              <span className="text-[13px] text-[#8b9cb6] font-medium">Cases</span>
-              <div className="w-7 h-7 rounded-lg bg-[#eab308]/20 flex items-center justify-center text-[#eab308]">
-                <Folder className="w-4 h-4" />
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{loading ? '-' : totalCases}</div>
-              <div className="text-[11px] text-[#8b9cb6] mt-1">
-                {casesWithPhotos} with photos
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Charts */}
-        <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
-          
-          {/* Line Chart */}
-          <div className="bg-[#111a31] rounded-xl p-6 border border-white/5 flex flex-col">
-            <div className="flex items-start justify-between mb-8">
-              <div>
-                <h3 className="text-[15px] font-semibold">Real vs AI over time</h3>
-                <p className="text-[12px] text-[#8b9cb6] mt-0.5">Scans completed by timeframe</p>
-              </div>
-              <div className="flex items-center gap-2 bg-[#090e17] p-1 rounded-md border border-white/5">
-                <button 
-                  onClick={() => setTimeframe(7)}
-                  className={`px-3 py-1 text-[11px] font-medium transition-colors ${timeframe === 7 ? 'bg-[#1e3a8a] text-white rounded' : 'text-[#8b9cb6] hover:text-white'}`}
-                >7 days</button>
-                <button 
-                  onClick={() => setTimeframe(14)}
-                  className={`px-3 py-1 text-[11px] font-medium transition-colors ${timeframe === 14 ? 'bg-[#1e3a8a] text-white rounded' : 'text-[#8b9cb6] hover:text-white'}`}
-                >14 days</button>
-                <button 
-                  onClick={() => setTimeframe(30)}
-                  className={`px-3 py-1 text-[11px] font-medium transition-colors ${timeframe === 30 ? 'bg-[#1e3a8a] text-white rounded' : 'text-[#8b9cb6] hover:text-white'}`}
-                >30 days</button>
-              </div>
-            </div>
-            
-            <div className="flex-1 relative min-h-[160px] w-full mt-auto">
-              <div className="absolute inset-0 flex flex-col justify-between pb-6">
-                {yLabels.map((val, idx) => (
-                  <div key={idx} className="w-full flex items-center gap-3">
-                    <span className="text-[10px] text-[#475569] w-4 text-right">{val}</span>
-                    <div className="flex-1 border-b border-[#1e293b]/40"></div>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="absolute inset-0 left-6 bottom-6">
-                {sortedDates.length > 0 ? (
-                  <svg width="100%" height="100%" viewBox="0 0 100 140" preserveAspectRatio="none">
-                    <polyline points={realPath} fill="none" stroke="#22c55e" strokeWidth="2" strokeLinejoin="round" />
-                    <polyline points={notSurePath} fill="none" stroke="#eab308" strokeWidth="2" strokeLinejoin="round" />
-                    <polyline points={aiPath} fill="none" stroke="#ec4899" strokeWidth="2" strokeLinejoin="round" />
-                  </svg>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[#8b9cb6] text-[13px]">
-                    No historical scan data available.
-                  </div>
-                )}
-              </div>
-              
-              <div className="absolute bottom-0 left-6 right-0 flex justify-between text-[9px] text-[#475569]">
-                {xLabels.map((label, idx) => (
-                  <span key={idx}>{label}</span>
-                ))}
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4 mt-6 text-[11px] font-medium">
-              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#22c55e]"></span><span className="text-[#8b9cb6]">Looks real</span></div>
-              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#eab308]"></span><span className="text-[#8b9cb6]">Not sure</span></div>
-              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#ec4899]"></span><span className="text-[#8b9cb6]">Likely AI-made</span></div>
-            </div>
-          </div>
-
-          {/* Donut Chart */}
-          <div className="bg-[#111a31] rounded-xl p-6 border border-white/5 flex flex-col justify-between min-h-[280px]">
-            <div>
-              <h3 className="text-[15px] font-semibold">What we found</h3>
-              <p className="text-[12px] text-[#8b9cb6] mt-0.5">Share of all your results</p>
-            </div>
-            
-            <div className="flex-1 flex flex-col justify-center items-center py-4 relative">
-              {photosChecked > 0 ? (
-                <>
-                  <svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
-                    <circle cx={donutSize/2} cy={donutSize/2} r={radius} fill="transparent" stroke="#1e293b" strokeWidth={strokeWidth} />
-                    
-                    <circle 
-                      cx={donutSize/2} cy={donutSize/2} r={radius} 
-                      fill="transparent" stroke="#22c55e" strokeWidth={strokeWidth} 
-                      strokeDasharray={realDasharray}
-                      strokeDashoffset={realOffset}
-                      transform={`rotate(-90 ${donutSize/2} ${donutSize/2})`}
-                      className="transition-all duration-1000 ease-out"
-                    />
-                    <circle 
-                      cx={donutSize/2} cy={donutSize/2} r={radius} 
-                      fill="transparent" stroke="#eab308" strokeWidth={strokeWidth} 
-                      strokeDasharray={notSureDasharray}
-                      strokeDashoffset={notSureOffset}
-                      transform={`rotate(-90 ${donutSize/2} ${donutSize/2})`}
-                      className="transition-all duration-1000 ease-out"
-                    />
-                    <circle 
-                      cx={donutSize/2} cy={donutSize/2} r={radius} 
-                      fill="transparent" stroke="#ec4899" strokeWidth={strokeWidth} 
-                      strokeDasharray={aiDasharray}
-                      strokeDashoffset={aiOffset}
-                      transform={`rotate(-90 ${donutSize/2} ${donutSize/2})`}
-                      className="transition-all duration-1000 ease-out"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-2xl font-bold leading-none">{photosChecked}</span>
-                    <span className="text-[11px] text-[#8b9cb6] mt-1">photos</span>
-                  </div>
-                </>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#8b9cb6] text-[13px]">
-                  No scans yet.
-                </div>
-              )}
-            </div>
-            
-            <div className="flex flex-col gap-2.5 mt-2">
-              <div className="flex items-center justify-between text-[13px]">
-                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#22c55e]"></span><span className="text-[#8b9cb6]">Looks real</span></div>
-                <span className="font-semibold">{lookedReal}</span>
-              </div>
-              <div className="flex items-center justify-between text-[13px]">
-                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#eab308]"></span><span className="text-[#8b9cb6]">Not sure</span></div>
-                <span className="font-semibold">{notSure}</span>
-              </div>
-              <div className="flex items-center justify-between text-[13px]">
-                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-[#ec4899]"></span><span className="text-[#8b9cb6]">Likely AI-made</span></div>
-                <span className="font-semibold">{likelyAi}</span>
-              </div>
-            </div>
-          </div>
-          
-        </div>
-
-        {/* Third Row: Busiest Cases & Tools */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-[#111a31] rounded-xl p-6 border border-white/5 flex flex-col min-h-[220px]">
-            <div>
-              <h3 className="text-[15px] font-semibold">Busiest cases</h3>
-              <p className="text-[12px] text-[#8b9cb6] mt-0.5">Which cases have the most photos</p>
-            </div>
-            
-            <div className="flex-1 flex items-stretch justify-center gap-8 pt-6 pb-2">
-              {busiestCases.length > 0 ? (
-                busiestCases.map((c, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center h-full group">
-                    <span className="text-[11px] font-semibold text-white mb-2">{c.count}</span>
-                    <div className="relative w-full max-w-[50px] flex-1 flex flex-col items-center">
-                      <div 
-                        className="absolute bottom-0 w-full bg-[#38bdf8] rounded-t-md transition-all duration-1000"
-                        style={{ height: `${Math.max(5, (c.count / maxBusiest) * 100)}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-[11px] text-[#8b9cb6] truncate w-full text-center px-1 mt-2">
-                      {c.name}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <div className="w-full h-full flex flex-col justify-center items-center text-[#8b9cb6] text-[13px] pb-4">
-                  <p>No active cases</p>
-                </div>
-              )}
-            </div>
-            
-            {/* Axis line */}
-            <div className="w-full border-t border-[#1e293b] mt-auto"></div>
-          </div>
-
-          <div className="bg-[#111a31] rounded-xl p-6 border border-white/5 flex flex-col min-h-[220px]">
-            <div>
-              <h3 className="text-[15px] font-semibold">Which tools you use</h3>
-              <p className="text-[12px] text-[#8b9cb6] mt-0.5">Every scan runs two checks. The AI Helper answers your questions.</p>
-            </div>
-            
-            <div className="flex-1 flex flex-col justify-center gap-5 mt-4">
-              <div className="flex flex-col gap-1.5">
-                <div className="flex justify-between items-center text-[12px]">
-                  <span className="font-medium">Pixel Check <span className="text-[#8b9cb6] font-normal">- looks at tiny details</span></span>
-                  <span className="font-semibold">{photosChecked}</span>
-                </div>
-                <div className="w-full h-1.5 bg-[#090e17] rounded-full overflow-hidden">
-                  <div className="h-full bg-[#38bdf8]" style={{ width: photosChecked > 0 ? '100%' : '0%' }}></div>
-                </div>
-              </div>
-              
-              <div className="flex flex-col gap-1.5">
-                <div className="flex justify-between items-center text-[12px]">
-                  <span className="font-medium">Pattern Check <span className="text-[#8b9cb6] font-normal">- hunts repeating patterns</span></span>
-                  <span className="font-semibold">{photosChecked}</span>
-                </div>
-                <div className="w-full h-1.5 bg-[#090e17] rounded-full overflow-hidden">
-                  <div className="h-full bg-[#38bdf8]" style={{ width: photosChecked > 0 ? '100%' : '0%' }}></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Fourth Row: Latest Checks */}
-        <div className="bg-[#111a31] rounded-xl p-6 border border-white/5 flex flex-col">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h3 className="text-[15px] font-semibold">Latest checks</h3>
-              <p className="text-[12px] text-[#8b9cb6] mt-0.5">Your most recent photos</p>
-            </div>
-            <Link to="/vault" className="flex items-center gap-1.5 text-[12px] font-medium text-white bg-[#090e17] border border-white/5 px-3 py-1.5 rounded-full hover:bg-white/5 transition-colors">
-              See all photos <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-
-          {latestChecks.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[600px]">
-                <thead>
-                  <tr className="border-b border-[#1e293b] text-[11px] text-[#8b9cb6]">
-                    <th className="pb-3 font-medium">Photo</th>
-                    <th className="pb-3 font-medium">Case</th>
-                    <th className="pb-3 font-medium">Checked on</th>
-                    <th className="pb-3 font-medium">Result</th>
-                    <th className="pb-3 font-medium text-right pr-4">AI chance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {latestChecks.map((ev) => {
-                    const result = ev.analysis_results?.[0];
-                    const score = result?.ensemble_score || 0;
-                    
-                    let verdictText = "Not sure";
-                    let verdictColorClass = "text-[#eab308] bg-[#eab308]/10 border-[#eab308]/20";
-                    let dotColor = "bg-[#eab308]";
-                    
-                    if (score >= 0.6) {
-                      verdictText = "Looks real";
-                      verdictColorClass = "text-[#22c55e] bg-[#22c55e]/10 border-[#22c55e]/20";
-                      dotColor = "bg-[#22c55e]";
-                    } else if (score <= 0.4) {
-                      verdictText = "Likely AI-made";
-                      verdictColorClass = "text-[#ec4899] bg-[#ec4899]/10 border-[#ec4899]/20";
-                      dotColor = "bg-[#ec4899]";
-                    }
-                    
-                    const time = result?.created_at || ev.created_at;
-                    const dateFormatted = new Date(time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-                    
-                    // Predict AI chance: low score = high AI chance.
-                    const aiChance = Math.round((1 - score) * 100);
-
-                    return (
-                      <tr key={ev.id} className="border-b border-[#1e293b] last:border-0 hover:bg-[#090e17]/50 transition-colors group">
-                        <td className="py-4">
-                          <Link to={`/investigation/${ev.investigation.id}/evidence/${ev.id}`} className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-md overflow-hidden bg-[#090e17] border border-white/5 flex-shrink-0 relative">
-                              <SecureImage investigationId={ev.investigation.id} evidenceId={ev.id} alt="Thumbnail" className="w-full h-full object-cover" />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
-                            </div>
-                            <span className="text-[13px] font-semibold text-white group-hover:text-[#38bdf8] transition-colors line-clamp-1">{ev.investigation.title} - Photo</span>
-                          </Link>
-                        </td>
-                        <td className="py-4 text-[12px] text-[#b0c4de]">{ev.investigation.title}</td>
-                        <td className="py-4">
-                          <div className="flex flex-col">
-                            <span className="text-[12px] text-[#b0c4de]">{dateFormatted}</span>
-                            <span className="text-[10px] text-[#8b9cb6]">{timeAgo(time)}</span>
-                          </div>
-                        </td>
-                        <td className="py-4">
-                          <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[11px] font-medium ${verdictColorClass}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>
-                            {verdictText}
-                          </div>
-                        </td>
-                        <td className="py-4 text-right pr-4 text-[13px] font-semibold">
-                          {aiChance}%
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="w-full py-10 flex flex-col items-center justify-center text-[#8b9cb6] text-[13px]">
-              <p>No recent scans found.</p>
-            </div>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

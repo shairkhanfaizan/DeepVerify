@@ -55,47 +55,50 @@ export function Home() {
       </div>
 
       {/* Custom Hero Section */}
-      <div className="bg-surface text-on-surface font-['Inter',sans-serif] w-full pt-[90px] selection:bg-[#38bdf8]/30 selection:text-white pb-[20px] relative">
-        <section className="grid grid-cols-1 lg:grid-cols-[1fr_1.05fr] px-[6vw] min-h-[600px] items-center relative">
-        <div className="pt-8 lg:pt-0 pb-12 lg:pb-0">
-          <div className="inline-flex items-center gap-[12px] px-[18px] py-[12px] rounded-full text-[13.5px] tracking-[1.4px] font-medium text-[#b9c8e6] bg-[#142450]/70 border border-[#648cff]/20">
+      <div className="bg-surface text-on-surface font-['Inter',sans-serif] w-full min-h-[calc(100vh-90px)] flex flex-col justify-between selection:bg-[#38bdf8]/30 selection:text-white relative">
+        <section className="grid grid-cols-1 lg:grid-cols-[1fr_1.05fr] px-[6vw] flex-1 items-center relative py-8">
+        <div className="pt-4 lg:pt-0 pb-8 lg:pb-0">
+          <div className="inline-flex items-center gap-[12px] px-[18px] py-[10px] rounded-full text-[13.5px] tracking-[1.4px] font-medium text-[#b9c8e6] bg-[#142450]/70 border border-[#648cff]/20">
             <i className="w-[9px] h-[9px] rounded-full bg-[#3b82f6] shadow-[0_0_10px_#3b82f6]"></i>
             AI-POWERED MEDIA VERIFICATION PLATFORM
           </div>
-          <h1 className="mt-[28px] text-[clamp(54px,6.2vw,92px)] leading-[1.02] tracking-[-2.5px] font-extrabold">
+          <h1
+            className="mt-[24px] text-[clamp(54px,6.2vw,92px)] leading-[1.02] tracking-[-2.5px] font-extrabold"
+            style={{ fontSize: "clamp(54px, 6.2vw, 92px)", lineHeight: 1.02, letterSpacing: "-2.5px" }}
+          >
             Trust What You <span className="block bg-gradient-to-r from-[#38bdf8] to-[#22d3ee] bg-clip-text text-transparent">See Online.</span>
           </h1>
-          <p className="mt-[28px] max-w-[590px] text-[21px] leading-[1.45] text-[#b3c0da]">
+          <p className="mt-[24px] max-w-[590px] text-[20px] lg:text-[21px] leading-[1.45] text-[#b3c0da]">
             DeepVerify is an investigative aid designed to help you examine suspicious media. Run image analysis today to spot potential signs of AI generation. Video verification capabilities are planned for the future.
           </p>
-          <div className="mt-[40px] flex flex-wrap gap-[20px]">
-            <Link to={user ? "/dashboard" : "/login"} className="inline-flex items-center gap-[14px] px-[32px] py-[20px] rounded-[10px] font-semibold text-[20px] text-[#04122b] bg-gradient-to-r from-[#38bdf8] to-[#22d3ee] shadow-[0_0_30px_rgba(56,189,248,0.35)] hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(56,189,248,0.5)] transition-all">
+          <div className="mt-[36px] flex flex-wrap gap-[18px]">
+            <Link to={user ? "/dashboard" : "/login"} className="inline-flex items-center gap-[14px] px-[32px] py-[18px] rounded-[10px] font-semibold text-[19px] lg:text-[20px] text-[#04122b] bg-gradient-to-r from-[#38bdf8] to-[#22d3ee] shadow-[0_0_30px_rgba(56,189,248,0.35)] hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(56,189,248,0.5)] transition-all">
               Sign In to Check an Image <span>→</span>
             </Link>
-            <a href="#how-it-works" className="inline-flex items-center gap-[14px] px-[32px] py-[20px] rounded-[10px] font-medium text-[20px] text-white border border-[#8caaff]/35 bg-[#0a1432]/50 hover:bg-[#0a1432]/80 transition-colors">
+            <a href="#how-it-works" className="inline-flex items-center gap-[14px] px-[32px] py-[18px] rounded-[10px] font-medium text-[19px] lg:text-[20px] text-white border border-[#8caaff]/35 bg-[#0a1432]/50 hover:bg-[#0a1432]/80 transition-colors">
               <span className="w-[26px] h-[26px] rounded-full bg-[#3b82f6] flex items-center justify-center pl-[2px]">
                 <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[8px] border-l-white"></div>
               </span>
               See How it Works
             </a>
           </div>
-          <div className="mt-[56px] flex flex-col lg:flex-row gap-[22px] lg:gap-0 max-w-[780px]">
+          <div className="mt-[44px] flex flex-col lg:flex-row gap-[22px] lg:gap-0 max-w-[780px]">
             <div className="flex gap-[16px] lg:pr-[28px] lg:mr-[28px] lg:border-r lg:border-[#78a0ff]/14">
               <svg viewBox="0 0 36 36" className="w-[36px] h-[36px] flex-none stroke-[#4f8bff] fill-none stroke-[1.8] stroke-linecap-[round] stroke-linejoin-[round]"><rect x="4" y="5" width="28" height="26" rx="3"/><circle cx="13" cy="14" r="3"/><path d="M4 27l9-8 7 6 5-4 7 6"/></svg>
-              <div><b className="block text-[16.5px] font-semibold mb-[6px] text-white">Image Analysis</b><span className="block text-[14px] leading-[1.4] text-[#7f90b1] max-w-[160px]">Detect AI-generated and manipulated media</span></div>
+              <div><b className="block text-[16px] font-semibold mb-[5px] text-white">Image Analysis</b><span className="block text-[13.5px] leading-[1.4] text-[#7f90b1] max-w-[160px]">Detect AI-generated and manipulated media</span></div>
             </div>
             <div className="flex gap-[16px] lg:pr-[28px] lg:mr-[28px] lg:border-r lg:border-[#78a0ff]/14">
               <svg viewBox="0 0 36 36" className="w-[36px] h-[36px] flex-none stroke-[#4f8bff] fill-none stroke-[1.8] stroke-linecap-[round] stroke-linejoin-[round]"><path d="M18 3l12 4v9c0 8-5 14-12 17C11 30 6 24 6 16V7z"/><path d="M12 17l5 5 8-9"/></svg>
-              <div><b className="block text-[16.5px] font-semibold mb-[6px] text-white">Explainable Results</b><span className="block text-[14px] leading-[1.4] text-[#7f90b1] max-w-[160px]">Visualize what the model is seeing (e.g. heatmaps)</span></div>
+              <div><b className="block text-[16px] font-semibold mb-[5px] text-white">Explainable Results</b><span className="block text-[13.5px] leading-[1.4] text-[#7f90b1] max-w-[160px]">Visualize what the model is seeing (e.g. heatmaps)</span></div>
             </div>
             <div className="flex gap-[16px]">
               <svg viewBox="0 0 36 36" className="w-[36px] h-[36px] flex-none stroke-[#4f8bff] fill-none stroke-[1.8] stroke-linecap-[round] stroke-linejoin-[round]"><rect x="4" y="4" width="28" height="28" rx="3"/><path d="M11 26V18M18 26V11M25 26V15"/></svg>
-              <div><b className="block text-[16.5px] font-semibold mb-[6px] text-white">Research Driven</b><span className="block text-[14px] leading-[1.4] text-[#7f90b1] max-w-[160px]">Built on state-of-the-art forensic techniques</span></div>
+              <div><b className="block text-[16px] font-semibold mb-[5px] text-white">Research Driven</b><span className="block text-[13.5px] leading-[1.4] text-[#7f90b1] max-w-[160px]">Built on state-of-the-art forensic techniques</span></div>
             </div>
           </div>
         </div>
 
-        <div className="relative h-[560px] lg:h-[600px] mt-10 lg:mt-0" style={{ perspective: '1700px' }}>
+        <div className="relative h-[520px] lg:h-[560px] mt-6 lg:mt-0" style={{ perspective: '1700px' }}>
           <div className="absolute left-[6%] bottom-[3%] w-[82%] h-[160px]" style={{ transform: 'rotateX(70deg) rotateZ(-4deg)' }}>
             <i className="absolute inset-0 rounded-full border-[2px] border-[#38bdf8]/80 shadow-[0_0_30px_rgba(56,189,248,0.6),inset_0_0_30px_rgba(56,189,248,0.35)]"></i>
             <i className="absolute inset-[14px_40px] rounded-full border-[2px] border-[#3b82f6]/55 shadow-[0_0_30px_rgba(56,189,248,0.6),inset_0_0_30px_rgba(56,189,248,0.35)]"></i>
@@ -219,23 +222,23 @@ export function Home() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-[1.1fr_repeat(4,1fr)] gap-[24px] lg:gap-0 items-center p-[34px_6vw] border-t border-[#78a0ff]/14 bg-surface-variant/40">
-        <div className="text-[14px] tracking-[1.6px] leading-[1.7] text-[#8da0c4]">TRUSTED BY RESEARCHERS,<br/>STUDENTS AND BUILDERS</div>
-        <div className="flex items-center gap-[16px] lg:pl-[28px] lg:border-l lg:border-[#78a0ff]/14">
-          <svg viewBox="0 0 40 40" className="w-[40px] h-[40px] stroke-[#5b8fff] fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round flex-none"><path d="M20 6L3 14l17 8 17-8z"/><path d="M9 18v9c0 3 5 6 11 6s11-3 11-6v-9"/></svg>
-          <div><b className="block text-[16.5px] font-semibold mb-[4px] text-white">Students</b><span className="text-[15px] text-[#7f90b1]">Academic Research</span></div>
+      <section className="grid grid-cols-1 lg:grid-cols-[1.1fr_repeat(4,1fr)] gap-[22px] lg:gap-0 items-center p-[22px_6vw] border-t border-[#78a0ff]/14 bg-surface-variant/40">
+        <div className="text-[13.5px] tracking-[1.4px] leading-[1.6] text-[#8da0c4]">TRUSTED BY RESEARCHERS,<br/>STUDENTS AND BUILDERS</div>
+        <div className="flex items-center gap-[15px] lg:pl-[26px] lg:border-l lg:border-[#78a0ff]/14">
+          <svg viewBox="0 0 40 40" className="w-[36px] h-[36px] stroke-[#5b8fff] fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round flex-none"><path d="M20 6L3 14l17 8 17-8z"/><path d="M9 18v9c0 3 5 6 11 6s11-3 11-6v-9"/></svg>
+          <div><b className="block text-[16px] font-semibold mb-[2px] text-white">Students</b><span className="text-[14px] text-[#7f90b1]">Academic Research</span></div>
         </div>
-        <div className="flex items-center gap-[16px] lg:pl-[28px] lg:border-l lg:border-[#78a0ff]/14">
-          <svg viewBox="0 0 40 40" className="w-[40px] h-[40px] stroke-[#5b8fff] fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round flex-none"><path d="M13 12L4 20l9 8M27 12l9 8-9 8M23 8l-6 24"/></svg>
-          <div><b className="block text-[16.5px] font-semibold mb-[4px] text-white">Developers</b><span className="text-[15px] text-[#7f90b1]">Open Source Projects</span></div>
+        <div className="flex items-center gap-[15px] lg:pl-[26px] lg:border-l lg:border-[#78a0ff]/14">
+          <svg viewBox="0 0 40 40" className="w-[36px] h-[36px] stroke-[#5b8fff] fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round flex-none"><path d="M13 12L4 20l9 8M27 12l9 8-9 8M23 8l-6 24"/></svg>
+          <div><b className="block text-[16px] font-semibold mb-[2px] text-white">Developers</b><span className="text-[14px] text-[#7f90b1]">Open Source Projects</span></div>
         </div>
-        <div className="flex items-center gap-[16px] lg:pl-[28px] lg:border-l lg:border-[#78a0ff]/14">
-          <svg viewBox="0 0 40 40" className="w-[40px] h-[40px] stroke-[#5b8fff] fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round flex-none"><path d="M10 4h14l8 8v24H10z"/><path d="M24 4v8h8M15 20h12M15 26h12"/></svg>
-          <div><b className="block text-[16.5px] font-semibold mb-[4px] text-white">Researchers</b><span className="text-[15px] text-[#7f90b1]">Forensic Analysis</span></div>
+        <div className="flex items-center gap-[15px] lg:pl-[26px] lg:border-l lg:border-[#78a0ff]/14">
+          <svg viewBox="0 0 40 40" className="w-[36px] h-[36px] stroke-[#5b8fff] fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round flex-none"><path d="M10 4h14l8 8v24H10z"/><path d="M24 4v8h8M15 20h12M15 26h12"/></svg>
+          <div><b className="block text-[16px] font-semibold mb-[2px] text-white">Researchers</b><span className="text-[14px] text-[#7f90b1]">Forensic Analysis</span></div>
         </div>
-        <div className="flex items-center gap-[16px] lg:pl-[28px] lg:border-l lg:border-[#78a0ff]/14">
-          <svg viewBox="0 0 40 40" className="w-[40px] h-[40px] stroke-[#5b8fff] fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round flex-none"><path d="M20 4l14 5v10c0 9-6 15-14 18C12 34 6 28 6 19V9z"/><path d="M13 20l5 5 9-10"/></svg>
-          <div><b className="block text-[16.5px] font-semibold mb-[4px] text-white">Organizations</b><span className="text-[15px] text-[#7f90b1]">Media Verification</span></div>
+        <div className="flex items-center gap-[15px] lg:pl-[26px] lg:border-l lg:border-[#78a0ff]/14">
+          <svg viewBox="0 0 40 40" className="w-[36px] h-[36px] stroke-[#5b8fff] fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round flex-none"><path d="M20 4l14 5v10c0 9-6 15-14 18C12 34 6 28 6 19V9z"/><path d="M13 20l5 5 9-10"/></svg>
+          <div><b className="block text-[16px] font-semibold mb-[2px] text-white">Organizations</b><span className="text-[14px] text-[#7f90b1]">Media Verification</span></div>
         </div>
       </section>
       </div>

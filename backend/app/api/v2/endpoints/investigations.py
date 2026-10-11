@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
@@ -11,13 +12,14 @@ import re
 from pydantic import BaseModel
 
 from app.api import deps
-from app.db.models import User, Investigation, EvidenceItem, AnalysisJob, AnalysisResult
+from app.db.models import User, Investigation, EvidenceItem, AnalysisJob, AnalysisResult, EvidenceObservation, EvidenceSignal
 from app.schemas.investigations import (
     InvestigationCreate, 
     InvestigationUpdate, 
     InvestigationResponse, 
     InvestigationListResponse, 
     EvidenceItemResponse,
+    EvidenceItemUpdate,
     AssistantQueryRequest,
     KeyValidationRequest,
     KeyValidationResponse
@@ -135,11 +137,53 @@ async def update_investigation(
     await db.refresh(investigation)
     return investigation
 
+@router.delete("/{investigation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_investigation(
+    investigation_id: str,
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(deps.get_db)
+):
+    stmt = select(Investigation).where(
+        Investigation.id == investigation_id,
+        Investigation.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    investigation = result.scalar_one_or_none()
+    
+    if not investigation:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+        
+    ev_stmt = select(EvidenceItem.id).where(EvidenceItem.investigation_id == investigation_id)
+    ev_res = await db.execute(ev_stmt)
+    evidence_ids = [row[0] for row in ev_res.fetchall()]
+    if evidence_ids:
+        # Clean up storage files if any
+        storage = get_storage_provider()
+        keys_stmt = select(EvidenceItem.storage_key).where(EvidenceItem.id.in_(evidence_ids))
+        keys_res = await db.execute(keys_stmt)
+        for row in keys_res.fetchall():
+            if row[0]:
+                try:
+                    await storage.delete_file(row[0])
+                except Exception:
+                    pass
+
+        await db.execute(delete(AnalysisResult).where(AnalysisResult.evidence_id.in_(evidence_ids)))
+        await db.execute(delete(EvidenceSignal).where(EvidenceSignal.evidence_id.in_(evidence_ids)))
+        await db.execute(delete(EvidenceObservation).where(EvidenceObservation.evidence_id.in_(evidence_ids)))
+        await db.execute(delete(AnalysisJob).where(AnalysisJob.evidence_id.in_(evidence_ids)))
+        await db.execute(delete(EvidenceItem).where(EvidenceItem.id.in_(evidence_ids)))
+
+    await db.execute(delete(Investigation).where(Investigation.id == investigation_id))
+    await db.commit()
+    return None
+
 @router.post("/{investigation_id}/evidence", status_code=status.HTTP_202_ACCEPTED)
 async def upload_evidence(
     investigation_id: str,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    name: Optional[str] = Form(None),
     current_user: User = Depends(deps.get_current_user),
     db: AsyncSession = Depends(deps.get_db)
 ):
@@ -170,6 +214,18 @@ async def upload_evidence(
             status="UPLOADED"
         )
         db.add(evidence)
+        await db.flush()
+
+        clean_name = name.strip() if name and name.strip() else (file.filename.rsplit('.', 1)[0] if file.filename else "Photo")
+        obs_name = EvidenceObservation(
+            evidence_id=evidence.id,
+            signal_type="ORIGINAL_FILENAME",
+            value=clean_name,
+            representation=f"Photo Name: {clean_name}",
+            provenance="User Input"
+        )
+        db.add(obs_name)
+
         await db.commit()
         await db.refresh(evidence)
     except Exception as e:
@@ -177,7 +233,78 @@ async def upload_evidence(
         await storage.delete_file(storage_key)
         raise e
 
-    return {"message": "Evidence uploaded", "evidence_id": evidence.id}
+    return {"message": "Evidence uploaded", "evidence_id": evidence.id, "name": clean_name}
+
+@router.patch("/{investigation_id}/evidence/{evidence_id}")
+async def update_evidence(
+    investigation_id: str,
+    evidence_id: str,
+    evidence_in: EvidenceItemUpdate,
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(deps.get_db)
+):
+    stmt = select(EvidenceItem).join(Investigation).options(
+        selectinload(EvidenceItem.observations)
+    ).where(
+        EvidenceItem.id == evidence_id,
+        Investigation.id == investigation_id,
+        Investigation.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    evidence = result.scalar_one_or_none()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+
+    if evidence_in.name is not None and evidence_in.name.strip():
+        new_name = evidence_in.name.strip()
+        obs = next((o for o in evidence.observations if o.signal_type in ("ORIGINAL_FILENAME", "EVIDENCE_NAME")), None)
+        if obs:
+            obs.value = new_name
+            obs.representation = f"Photo Name: {new_name}"
+        else:
+            new_obs = EvidenceObservation(
+                evidence_id=evidence.id,
+                signal_type="ORIGINAL_FILENAME",
+                value=new_name,
+                representation=f"Photo Name: {new_name}",
+                provenance="User Input"
+            )
+            db.add(new_obs)
+            
+    await db.commit()
+    return {"message": "Evidence updated successfully", "evidence_id": evidence.id}
+
+@router.delete("/{investigation_id}/evidence/{evidence_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_evidence_item(
+    investigation_id: str,
+    evidence_id: str,
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(deps.get_db)
+):
+    stmt = select(EvidenceItem).join(Investigation).where(
+        EvidenceItem.id == evidence_id,
+        Investigation.id == investigation_id,
+        Investigation.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    evidence = result.scalar_one_or_none()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+
+    if evidence.storage_key:
+        storage = get_storage_provider()
+        try:
+            await storage.delete_file(evidence.storage_key)
+        except Exception:
+            pass
+
+    await db.execute(delete(AnalysisResult).where(AnalysisResult.evidence_id == evidence_id))
+    await db.execute(delete(EvidenceSignal).where(EvidenceSignal.evidence_id == evidence_id))
+    await db.execute(delete(EvidenceObservation).where(EvidenceObservation.evidence_id == evidence_id))
+    await db.execute(delete(AnalysisJob).where(AnalysisJob.evidence_id == evidence_id))
+    await db.execute(delete(EvidenceItem).where(EvidenceItem.id == evidence_id))
+    await db.commit()
+    return None
 
 class AnalyzeEvidenceRequest(BaseModel):
     policy: str = "ensemble-v1.0"
@@ -213,10 +340,16 @@ async def analyze_evidence(
     if not evidence:
         raise HTTPException(status_code=404, detail="Evidence not found")
         
-    if evidence.status in ("ANALYZING", "COMPLETED"):
-        raise HTTPException(status_code=400, detail=f"Evidence is already {evidence.status.lower()}")
+    if evidence.status in ("ANALYZING",):
+        raise HTTPException(status_code=400, detail="Evidence is currently being analyzed")
         
     try:
+        if evidence.status == "COMPLETED":
+            await db.execute(delete(AnalysisResult).where(AnalysisResult.evidence_id == evidence.id))
+            await db.execute(delete(EvidenceSignal).where(EvidenceSignal.evidence_id == evidence.id))
+            await db.execute(delete(EvidenceObservation).where(EvidenceObservation.evidence_id == evidence.id))
+            await db.execute(delete(AnalysisJob).where(AnalysisJob.evidence_id == evidence.id))
+            await db.commit()
         evidence.status = "ANALYZING"
         job = AnalysisJob(evidence_id=evidence.id, status="QUEUED", policy_version=policy.version)
         db.add(job)
@@ -232,7 +365,32 @@ async def analyze_evidence(
     
     return {"message": "Analysis queued", "evidence_id": evidence.id, "job_id": job.id}
 
-from fastapi.responses import Response
+@router.get("/evidence/{evidence_id}/download")
+async def download_evidence_direct(
+    evidence_id: str,
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(deps.get_db)
+):
+    stmt = select(EvidenceItem).join(Investigation).where(
+        EvidenceItem.id == evidence_id,
+        Investigation.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    evidence = result.scalar_one_or_none()
+    
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+        
+    storage = get_storage_provider()
+    try:
+        content = await storage.get_file(evidence.storage_key)
+        return Response(
+            content=content, 
+            media_type=evidence.mime_type or "image/jpeg",
+            headers={"Cache-Control": "private, max-age=86400"}
+        )
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found on storage")
 
 @router.get("/{investigation_id}/evidence/{evidence_id}/download")
 async def download_evidence(
@@ -255,7 +413,11 @@ async def download_evidence(
     storage = get_storage_provider()
     try:
         content = await storage.get_file(evidence.storage_key)
-        return Response(content=content, media_type=evidence.mime_type)
+        return Response(
+            content=content, 
+            media_type=evidence.mime_type or "image/jpeg",
+            headers={"Cache-Control": "private, max-age=86400"}
+        )
     except Exception:
         raise HTTPException(status_code=404, detail="File not found on storage")
 
@@ -289,6 +451,47 @@ async def download_heatmap(
         return Response(content=content, media_type="image/png")
     except Exception:
         raise HTTPException(status_code=404, detail="File not found on storage")
+
+@router.get("/{investigation_id}/evidence/{evidence_id}/spectrum")
+async def download_spectrum(
+    investigation_id: str,
+    evidence_id: str,
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(deps.get_db)
+):
+    stmt = select(EvidenceItem).join(Investigation).where(
+        EvidenceItem.id == evidence_id,
+        Investigation.id == investigation_id,
+        Investigation.user_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    evidence = result.scalar_one_or_none()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+        
+    storage = get_storage_provider()
+    try:
+        content = await storage.get_file(evidence.storage_key)
+        from PIL import Image
+        import numpy as np
+        import matplotlib.pyplot as plt
+        
+        with Image.open(io.BytesIO(content)) as pil_img:
+            gray = pil_img.convert("L").resize((256, 256))
+            arr = np.array(gray, dtype=np.float32)
+            f = np.fft.fft2(arr)
+            fshift = np.fft.fftshift(f)
+            magnitude_spectrum = 20 * np.log(np.abs(fshift) + 1e-9)
+            norm = (magnitude_spectrum - magnitude_spectrum.min()) / (magnitude_spectrum.max() - magnitude_spectrum.min() + 1e-9)
+            cm = plt.get_cmap("viridis")
+            colored = (cm(norm)[:, :, :3] * 255).astype(np.uint8)
+            spec_img = Image.fromarray(colored)
+            buf = io.BytesIO()
+            spec_img.save(buf, format="PNG")
+            return Response(content=buf.getvalue(), media_type="image/png")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to generate Fourier spectrum")
+
 
 @router.post("/{investigation_id}/evidence/{evidence_id}/assistant")
 async def query_evidence_assistant(

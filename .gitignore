@@ -166,3 +166,6 @@ patch_workbench.py
 verify_workflow.py
 scripts/evaluate_video_models.py
 scripts/generate_test_videos.py
+*.db
+deepverify-app/
+designs_reference/

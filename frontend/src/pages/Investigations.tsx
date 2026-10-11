@@ -1,314 +1,1004 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { fetchApi } from "../services/api";
-import { Link, useNavigate } from "react-router-dom";
-import { Loader2, Search, ChevronDown, Plus, Bot, CheckCircle, FolderSearch, AlertCircle } from "lucide-react";
 import { SecureImage } from "../components/ui/SecureImage";
-import { motion } from "framer-motion";
+import {
+  Search,
+  UploadCloud,
+  Loader2,
+  Plus,
+  Trash2
+} from "lucide-react";
 
 interface AnalysisResult {
   ensemble_score: number;
   verdict: string;
 }
+
 interface EvidenceItem {
   id: string;
   status: string;
+  name?: string;
+  original_filename?: string;
   analysis_results?: AnalysisResult[];
+  observations?: Array<{ signal_type: string; value: string }>;
 }
-interface InvestigationListResponse {
+
+interface InvestigationItem {
   id: string;
   title: string;
-  description?: string;
+  notes?: string;
   status: string;
   created_at: string;
   updated_at: string;
   evidence_items?: EvidenceItem[];
 }
 
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  if (hours < 1) return "Just now";
-  if (hours < 24) return `${hours} hr ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "Yesterday";
-  return `${days} days ago`;
+const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function fmtDate(t: any): string {
+  if (!t) return "—";
+  const d = new Date(t);
+  if (isNaN(d.getTime())) return "—";
+  return `${d.getDate()} ${M[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-const formatDate = (dateStr: string) => {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+function timeAgo(t: any): string {
+  if (!t) return "just now";
+  const s = Math.max(1, (Date.now() - new Date(t).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} hr ago`;
+  const d = Math.floor(s / 86400);
+  return d === 1 ? "Yesterday" : `${d} days ago`;
+}
+
+function getCounts(items: EvidenceItem[] = []) {
+  const c = { real: 0, warn: 0, ai: 0, wait: 0 };
+  items.forEach((p) => {
+    if (p.status !== "COMPLETED") {
+      c.wait++;
+      return;
+    }
+    const score = p.analysis_results?.[0]?.ensemble_score ?? 0.5;
+    const aiChance = Math.round((1 - score) * 100);
+    if (aiChance < 35) c.real++;
+    else if (aiChance < 65) c.warn++;
+    else c.ai++;
+  });
+  return c;
+}
 
 export function Investigations() {
   const navigate = useNavigate();
-  const [investigations, setInvestigations] = useState<InvestigationListResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "HAS_AI" | "EMPTY">("ALL");
-  const [sortBy, setSortBy] = useState<"updated" | "created">("updated");
-  const [creating, setCreating] = useState(false);
+  const [investigations, setInvestigations] = useState<InvestigationItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [filter, setFilter] = useState<"all" | "ai" | "empty">("all");
+  const [sort, setSort] = useState<"updated" | "created" | "name">("updated");
 
-  const loadInvestigations = async () => {
+  // Create Case Modal
+  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [newTitle, setNewTitle] = useState<string>("");
+  const [creating, setCreating] = useState<boolean>(false);
+
+  // Topbar Check a photo upload flow
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedFileForUpload, setSelectedFileForUpload] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploadPhotoName, setUploadPhotoName] = useState<string>("");
+  const [caseMode, setCaseMode] = useState<"new" | "existing">("new");
+  const [uploadNewCaseName, setUploadNewCaseName] = useState<string>("");
+  const [uploadTargetCaseId, setUploadTargetCaseId] = useState<string>("");
+  const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
+  const [uploadingAndScanning, setUploadingAndScanning] = useState<boolean>(false);
+  // Delete Case state
+  const [caseToDelete, setCaseToDelete] = useState<InvestigationItem | null>(null);
+  const [showDeleteCaseModal, setShowDeleteCaseModal] = useState<boolean>(false);
+  const [deletingCase, setDeletingCase] = useState<boolean>(false);
+
+  const handleDeleteCase = async () => {
+    if (!caseToDelete) return;
+    try {
+      setDeletingCase(true);
+      await fetchApi(`/api/v2/investigations/${caseToDelete.id}`, {
+        method: "DELETE"
+      });
+      setInvestigations((prev) => prev.filter((c) => c.id !== caseToDelete.id));
+      setShowDeleteCaseModal(false);
+      setCaseToDelete(null);
+      showToast("Case deleted");
+    } catch (err: any) {
+      console.error("Failed to delete case:", err);
+      showToast(err.message || "Failed to delete case");
+    } finally {
+      setDeletingCase(false);
+    }
+  };
+
+  const [toasts, setToasts] = useState<string[]>([]);
+  const showToast = (msg: string) => {
+    setToasts((prev) => [...prev, msg]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t !== msg));
+    }, 3200);
+  };
+
+  const loadData = async () => {
     try {
       setLoading(true);
-      setError(null);
       const data = await fetchApi("/api/v2/investigations/");
-      
-      const detailedPromises = (data || []).map((inv: any) =>
-        fetchApi(`/api/v2/investigations/${inv.id}`).catch(() => null)
-      );
-      const detailed = await Promise.all(detailedPromises);
-      setInvestigations(detailed.filter(Boolean));
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to load investigations";
-      setError(msg);
+      if (Array.isArray(data)) {
+        const detailedPromises = data.map((inv: any) =>
+          fetchApi(`/api/v2/investigations/${inv.id}`).catch(() => inv)
+        );
+        const detailed = await Promise.all(detailedPromises);
+        setInvestigations(detailed.filter(Boolean));
+        if (detailed.length > 0 && !uploadTargetCaseId) {
+          setUploadTargetCaseId(detailed[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load investigations:", err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadInvestigations();
+    loadData();
   }, []);
 
-  const handleNewCase = async () => {
-    const title = window.prompt("Enter a name for the new case:", "New Investigation");
-    if (title === null) return;
+  const handleCreateCase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
 
     try {
       setCreating(true);
       const invData = await fetchApi("/api/v2/investigations/", {
         method: "POST",
-        body: JSON.stringify({ title: title.trim() || "Untitled Case" })
+        body: JSON.stringify({
+          title: newTitle.trim(),
+        }),
       });
       if (invData && invData.id) {
+        setShowCreateModal(false);
         navigate(`/investigation/${invData.id}`);
-      } else {
-        throw new Error("Failed to retrieve new case ID");
       }
     } catch (err) {
-      alert("Failed to create case. Please try again.");
+      console.error("Failed to create case:", err);
+    } finally {
       setCreating(false);
     }
   };
 
-  const filteredInvestigations = investigations.filter(inv => {
-    const matchesSearch = (inv.title || "").toLowerCase().includes((searchQuery || "").toLowerCase());
-    
-    let matchesStatus = true;
-    if (statusFilter === "HAS_AI") {
-      matchesStatus = (inv.evidence_items || []).some(ev => 
-        ev.status === "COMPLETED" && 
-        ev.analysis_results?.[0]?.verdict === "LIKELY_AI_GENERATED"
-      );
-    } else if (statusFilter === "EMPTY") {
-      const activeItems = (inv.evidence_items || []).filter(ev => ev.status !== "FAILED");
-      matchesStatus = activeItems.length === 0;
-    }
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Topbar Photo Upload
+  const handleTopCheckPhotoClick = () => {
+    fileInputRef.current?.click();
+  };
 
-  const sortedInvestigations = [...filteredInvestigations].sort((a, b) => {
-    if (sortBy === "updated") {
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  const handleFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSelectedFileForUpload(file);
+    const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ");
+    setUploadPhotoName(cleanName);
+
+    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    setUploadNewCaseName(`Case · ${cleanName || todayStr}`);
+
+    const objUrl = URL.createObjectURL(file);
+    setPreviewUrl(objUrl);
+    setShowUploadModal(true);
+    e.target.value = "";
+  };
+
+  const handleConfirmUploadAndScan = async () => {
+    if (!selectedFileForUpload) return;
+    try {
+      setUploadingAndScanning(true);
+      let targetId = uploadTargetCaseId;
+
+      if (caseMode === "new") {
+        const caseTitle = uploadNewCaseName.trim() || `Case: ${uploadPhotoName.trim() || "Untitled"}`;
+        const newCase = await fetchApi("/api/v2/investigations/", {
+          method: "POST",
+          body: JSON.stringify({ title: caseTitle })
+        });
+        targetId = newCase.id;
+      }
+
+      if (!targetId) throw new Error("No target case selected");
+
+      const formData = new FormData();
+      formData.append("file", selectedFileForUpload);
+      if (uploadPhotoName.trim()) {
+        formData.append("name", uploadPhotoName.trim());
+      }
+
+      const evidenceItem = await fetchApi(`/api/v2/investigations/${targetId}/evidence`, {
+        method: "POST",
+        body: formData
+      });
+
+      fetchApi(`/api/v2/investigations/${targetId}/evidence/${evidenceItem.id}/analyze`, {
+        method: "POST"
+      }).catch(console.error);
+
+      setShowUploadModal(false);
+      navigate(`/investigation/${targetId}/evidence/${evidenceItem.id}`);
+    } catch (err: any) {
+      console.error("Failed to upload evidence:", err);
+    } finally {
+      setUploadingAndScanning(false);
     }
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  };
+
+  // Filtering & Sorting
+  let filteredCases = investigations.filter((c) =>
+    (c.title || "").toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (filter === "ai") {
+    filteredCases = filteredCases.filter((c) => getCounts(c.evidence_items || []).ai > 0);
+  } else if (filter === "empty") {
+    filteredCases = filteredCases.filter((c) => !(c.evidence_items?.length));
+  }
+
+  filteredCases.sort((a, b) => {
+    if (sort === "name") {
+      return (a.title || "").localeCompare(b.title || "");
+    }
+    if (sort === "created") {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   });
 
   return (
-    <div className="flex flex-col w-full min-h-screen bg-[#090e17] text-white">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="max-w-[1440px] mx-auto w-full px-8 md:px-12 pt-8 pb-16 flex flex-col"
-      >
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+    <div className="cases-page font-sans text-white">
+      <style>{`
+        :root {
+          --bg: #050c1d;
+          --bg2: #0a1530;
+          --panel: rgba(14,30,70,.55);
+          --panel2: rgba(10,22,54,.8);
+          --line: rgba(120,160,255,.16);
+          --line2: rgba(120,160,255,.28);
+          --text: #fff;
+          --muted: #9fb0cc;
+          --faint: #6f82a6;
+          --cyan: #22d3ee;
+          --sky: #38bdf8;
+          --blue: #3b82f6;
+          --real: #2ee6a6;
+          --warn: #fbbf24;
+          --ai: #fb7185;
+          --grad: linear-gradient(90deg,#38bdf8,#22d3ee);
+          --r: 16px;
+        }
+
+        .cases-page {
+          min-height: 100vh;
+          font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
+        .cases-page h1, .cases-page h2, .cases-page h3 {
+          font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif !important;
+        }
+
+        .top {
+          position: sticky;
+          top: 0;
+          z-index: 20;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 22px 0 18px 0;
+          background: rgba(5,12,29,.9);
+          backdrop-filter: blur(10px);
+          border-bottom: 1px solid var(--line);
+          margin-bottom: 24px;
+        }
+        .crumb {
+          color: var(--faint);
+          font-size: 14px;
+        }
+        .crumb b {
+          color: #fff;
+          font-weight: 600;
+        }
+        .top-r {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--real);
+          letter-spacing: .4px;
+        }
+        .pill i {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--real);
+          box-shadow: 0 0 10px var(--real);
+        }
+
+        h1 {
+          font-size: clamp(30px, 3.4vw, 44px);
+          letter-spacing: -1.2px;
+          font-weight: 800;
+          line-height: 1.1;
+        }
+        h2 {
+          font-size: 20px;
+          font-weight: 700;
+          letter-spacing: -0.3px;
+        }
+        .grad {
+          background: var(--grad);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+        }
+        .lead {
+          color: var(--muted);
+          font-size: 17px;
+          line-height: 1.5;
+          margin-top: 10px;
+          max-width: 640px;
+        }
+        .muted { color: var(--muted); }
+        .faint { color: var(--faint); }
+        .sm { font-size: 13px; }
+
+        .card {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: var(--r);
+          padding: 22px;
+          backdrop-filter: blur(6px);
+        }
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 12px 20px;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 15px;
+          transition: .2s;
+          border: 1px solid var(--line2);
+          background: rgba(10,20,50,.5);
+          color: #fff;
+          cursor: pointer;
+        }
+        .btn:hover {
+          border-color: var(--sky);
+          background: rgba(56,130,255,.15);
+        }
+        .btn.pri {
+          background: var(--grad);
+          color: #04122b;
+          border: 0;
+          box-shadow: 0 0 26px rgba(56,189,248,.35);
+        }
+        .btn.pri:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 0 34px rgba(56,189,248,.55);
+        }
+        .btn.sm {
+          padding: 8px 14px;
+          font-size: 13.5px;
+          border-radius: 10px;
+        }
+
+        .chip {
+          padding: 8px 14px;
+          border-radius: 99px;
+          font-size: 13.5px;
+          font-weight: 500;
+          border: 1px solid var(--line2);
+          color: #c4d2ee;
+          transition: .2s;
+          cursor: pointer;
+          background: none;
+        }
+        .chip:hover {
+          border-color: var(--sky);
+        }
+        .chip.on {
+          background: rgba(56,189,248,.2);
+          border-color: var(--sky);
+          color: #fff;
+        }
+
+        .row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .between {
+          justify-content: space-between;
+        }
+        .search {
+          position: relative;
+          flex: 1;
+          min-width: 220px;
+        }
+        .search svg {
+          position: absolute;
+          left: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 18px;
+          height: 18px;
+          stroke: var(--faint);
+          fill: none;
+          stroke-width: 2;
+        }
+        .search input {
+          background: rgba(5,12,32,.7);
+          border: 1px solid var(--line2);
+          border-radius: 12px;
+          padding: 12px 14px 12px 42px;
+          width: 100%;
+          outline: none;
+          color: #fff;
+          font-family: inherit;
+        }
+        .search input:focus {
+          border-color: var(--sky);
+          box-shadow: 0 0 0 3px rgba(56,189,248,.18);
+        }
+
+        .grid {
+          display: grid;
+          gap: 18px;
+        }
+        .g3 {
+          grid-template-columns: repeat(3, 1fr);
+        }
+        @media (max-width: 1100px) {
+          .g3 { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 700px) {
+          .g3 { grid-template-columns: 1fr; }
+        }
+
+        .case {
+          cursor: pointer;
+          transition: .25s;
+        }
+        .case:hover {
+          transform: translateY(-4px);
+          border-color: var(--sky);
+          box-shadow: 0 12px 34px rgba(37,99,235,.28);
+        }
+        .strip {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 6px;
+          margin: 14px 0;
+        }
+        .strip .thumb {
+          aspect-ratio: 1;
+          border-radius: 9px;
+          overflow: hidden;
+          background: #0b1630;
+          border: 1px solid var(--line);
+        }
+        .strip .empty {
+          aspect-ratio: 1;
+          border-radius: 9px;
+          border: 1px dashed var(--line2);
+          display: grid;
+          place-items: center;
+          color: var(--faint);
+          font-size: 18px;
+        }
+        .mix {
+          display: flex;
+          height: 8px;
+          border-radius: 99px;
+          overflow: hidden;
+          background: rgba(80,120,200,.2);
+        }
+        .mix i {
+          display: block;
+          height: 100%;
+          transition: width .8s;
+        }
+
+        .tag {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 99px;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: .3px;
+        }
+        .tag.real { background: rgba(46,230,166,.14); color: var(--real); }
+        .tag.warn { background: rgba(251,191,36,.14); color: var(--warn); }
+        .tag.ai { background: rgba(251,113,133,.15); color: var(--ai); }
+        .tag.wait { background: rgba(159,176,204,.15); color: var(--muted); }
+
+        .empty-state {
+          text-align: center;
+          padding: 50px 20px;
+          color: var(--muted);
+        }
+        .empty-state .emo {
+          font-size: 44px;
+          margin-bottom: 10px;
+        }
+
+        .field {
+          display: grid;
+          gap: 8px;
+          margin-bottom: 16px;
+        }
+        .field label {
+          font-size: 13.5px;
+          font-weight: 600;
+          color: #cdd9f2;
+        }
+        .field input, .field select, .field textarea {
+          background: rgba(5,12,32,.7);
+          border: 1px solid var(--line2);
+          border-radius: 12px;
+          padding: 12px 14px;
+          width: 100%;
+          outline: none;
+          color: #fff;
+          font-family: inherit;
+        }
+        .field input:focus, .field select:focus, .field textarea:focus {
+          border-color: var(--sky);
+          box-shadow: 0 0 0 3px rgba(56,189,248,.18);
+        }
+        .field small {
+          color: var(--faint);
+          font-size: 12.5px;
+        }
+
+        .veil {
+          position: fixed;
+          inset: 0;
+          background: rgba(2,6,16,.7);
+          backdrop-filter: blur(6px);
+          display: grid;
+          place-items: center;
+          z-index: 50;
+          animation: fade .2s;
+        }
+        .modal {
+          width: min(520px, 92vw);
+          background: #0a1530;
+          border: 1px solid var(--line2);
+          border-radius: 20px;
+          padding: 28px;
+          box-shadow: 0 20px 80px rgba(0,0,0,.6);
+          animation: pop .25s;
+        }
+
+        @keyframes fade { from { opacity: 0; } }
+        @keyframes pop { from { opacity: 0; transform: scale(.96) translateY(8px); } }
+
+        .toasts {
+          position: fixed;
+          right: 24px;
+          bottom: 24px;
+          display: grid;
+          gap: 10px;
+          z-index: 60;
+        }
+        .toast {
+          background: #0a1a3e;
+          border: 1px solid var(--line2);
+          border-left: 4px solid var(--cyan);
+          padding: 14px 18px;
+          border-radius: 12px;
+          font-size: 14px;
+          box-shadow: 0 10px 40px rgba(0,0,0,.5);
+          animation: pop .25s;
+          color: #fff;
+        }
+
+        @keyframes rise {
+          from { opacity: 0; transform: translateY(14px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .stagger > * {
+          animation: rise .5s cubic-bezier(.2,.8,.2,1) both;
+        }
+        .stagger > *:nth-child(2) { animation-delay: .06s; }
+        .stagger > *:nth-child(3) { animation-delay: .12s; }
+      `}</style>
+
+      {/* Hidden File Picker */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/bmp"
+        className="hidden"
+        style={{ display: "none" }}
+        onChange={handleFilePicked}
+      />
+
+      {/* Sticky Topbar */}
+      <div className="top">
+        <div className="crumb">
+          DeepVerify &rsaquo; <b>My Cases</b>
+        </div>
+        <div className="top-r">
+          <span className="pill"><i></i> Scanner ready</span>
+          <button className="btn pri sm" onClick={handleTopCheckPhotoClick}>
+            <UploadCloud className="w-4 h-4 mr-1 inline" /> Check a photo
+          </button>
+        </div>
+      </div>
+
+      {/* Main Container */}
+      <div className="stagger" style={{ display: "grid", gap: "22px", paddingBottom: "60px" }}>
+        
+        {/* Title and New Case Header */}
+        <div className="row between">
           <div>
-            <h1 className="text-[13px] font-semibold text-white mb-2">My Cases</h1>
-            <h2 className="text-[36px] font-bold text-white mb-3 leading-none tracking-tight">My <span className="text-[#38bdf8]">Cases</span></h2>
-            <p className="text-[13px] text-[#8b9cb6] max-w-[500px] leading-relaxed">
-              A case is a folder for photos you want to check together – like "Fake news hunt" or "Is this profile real?"
+            <h1>My <span className="grad">Cases</span></h1>
+            <p className="lead">
+              A case is a folder for photos you want to check together – like &ldquo;Fake news hunt&rdquo; or &ldquo;Is this profile real?&rdquo;
             </p>
           </div>
-          <button 
-            onClick={handleNewCase}
-            disabled={creating}
-            className={`flex items-center gap-2 px-5 py-2.5 border border-[#38bdf8] text-[#38bdf8] rounded-full text-[13px] font-semibold hover:bg-[#38bdf8]/10 transition-colors shrink-0 ${creating ? "opacity-50 cursor-not-allowed" : ""}`}
-          >
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-            {creating ? "Creating..." : "New case"}
+          <button className="btn pri" id="nc" onClick={() => setShowCreateModal(true)}>
+            <Plus className="w-4 h-4 mr-1 inline" /> New case
           </button>
         </div>
 
-        <div className="flex flex-col md:flex-row items-center gap-4 mb-10 border-b border-white/5 pb-6">
-          <div className="relative w-full md:w-[320px]">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8b9cb6]" />
-            <input 
-               value={searchQuery}
-               onChange={(e) => setSearchQuery(e.target.value)}
-               className="w-full bg-[#111a31]/50 border border-white/5 rounded-xl py-2.5 pl-11 pr-4 text-[13px] text-white placeholder-[#8b9cb6] outline-none focus:border-[#38bdf8]/50 transition-colors"
-               placeholder="Search your cases..."
+        {/* Filter, Search, and Sort Row */}
+        <div className="row">
+          <div className="search">
+            <Search className="ico" />
+            <input
+              id="q"
+              placeholder="Search your cases…"
+              aria-label="Search cases"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex items-center gap-3 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto">
-            <button 
-               onClick={() => setStatusFilter("ALL")}
-               className={`px-4 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap transition-colors ${statusFilter === "ALL" ? "border border-[#38bdf8] text-[#38bdf8] bg-[#38bdf8]/5" : "bg-[#111a31]/80 text-[#8b9cb6] hover:text-white"}`}
-            >All</button>
-            <button 
-               onClick={() => setStatusFilter("HAS_AI")}
-               className={`px-4 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap transition-colors ${statusFilter === "HAS_AI" ? "border border-[#38bdf8] text-[#38bdf8] bg-[#38bdf8]/5" : "bg-[#111a31]/80 text-[#8b9cb6] hover:text-white"}`}
-            >Has AI-made photos</button>
-            <button 
-               onClick={() => setStatusFilter("EMPTY")}
-               className={`px-4 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap transition-colors ${statusFilter === "EMPTY" ? "border border-[#38bdf8] text-[#38bdf8] bg-[#38bdf8]/5" : "bg-[#111a31]/80 text-[#8b9cb6] hover:text-white"}`}
-            >Empty</button>
-            <div className="flex-1"></div>
-            <button 
-               onClick={() => setSortBy(s => s === "updated" ? "created" : "updated")}
-               className="px-4 py-1.5 rounded-full text-[12px] bg-[#111a31]/80 text-[#8b9cb6] hover:text-white transition-colors flex items-center gap-1.5 whitespace-nowrap ml-auto"
+
+          <div className="row" id="flt">
+            <button
+              className={`chip ${filter === "all" ? "on" : ""}`}
+              onClick={() => setFilter("all")}
             >
-              {sortBy === "updated" ? "Recently updated" : "Recently created"} <ChevronDown className="w-3.5 h-3.5" />
+              All
+            </button>
+            <button
+              className={`chip ${filter === "ai" ? "on" : ""}`}
+              onClick={() => setFilter("ai")}
+            >
+              Has AI-made photos
+            </button>
+            <button
+              className={`chip ${filter === "empty" ? "on" : ""}`}
+              onClick={() => setFilter("empty")}
+            >
+              Empty
             </button>
           </div>
+
+          <select
+            id="srt"
+            className="chip"
+            style={{ background: "rgba(5,12,32,.7)", color: "#fff", outline: "none" }}
+            aria-label="Sort cases"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as any)}
+          >
+            <option value="updated">Recently updated</option>
+            <option value="created">Newest first</option>
+            <option value="name">A → Z</option>
+          </select>
         </div>
 
+        {/* Cards Grid */}
         {loading ? (
-          <div className="py-24 flex flex-col items-center justify-center text-[#8b9cb6] gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-[#38bdf8]" />
-            <span className="text-[13px]">Loading your cases...</span>
+          <div className="flex items-center justify-center py-24 text-muted">
+            <Loader2 className="w-8 h-8 animate-spin text-cyan-400 mr-3" />
+            <span>Loading cases...</span>
           </div>
-        ) : error ? (
-          <div className="py-24 text-center text-[#ef4444] flex flex-col items-center">
-            <AlertCircle className="h-10 w-10 mb-3 opacity-80" />
-            <p className="text-[14px]">{error}</p>
-            <button 
-              className="mt-6 px-4 py-2 border border-[#ef4444] text-[#ef4444] rounded hover:bg-[#ef4444]/10 transition-colors text-[13px]" 
-              onClick={loadInvestigations}
-            >
-              Retry
-            </button>
-          </div>
-        ) : sortedInvestigations.length === 0 ? (
-          <div className="text-center py-24 border border-dashed border-white/10 rounded-2xl bg-[#111a31]/30">
-            <div className="mx-auto w-12 h-12 bg-[#111a31] rounded-full flex items-center justify-center mb-4">
-              <FolderSearch className="h-5 w-5 text-[#8b9cb6]" />
-            </div>
-            <h3 className="text-[15px] font-semibold text-white mb-2">No cases found</h3>
-            <p className="text-[#8b9cb6] text-[13px] max-w-sm mx-auto mb-6">
-              Create a new case to start organizing your investigations, or adjust your filters.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sortedInvestigations.map((inv) => {
-              const evidenceItems = inv.evidence_items || [];
-              let real = 0, ai = 0, pending = 0, failed = 0;
-              
-              evidenceItems.forEach(ev => {
-                if (ev.status === "COMPLETED" && ev.analysis_results && ev.analysis_results.length > 0) {
-                  const verdict = ev.analysis_results[0].verdict;
-                  if (verdict === "LIKELY_AI_GENERATED") {
-                    ai++;
-                  } else if (verdict === "LIKELY_AUTHENTIC") {
-                    real++;
-                  }
-                } else if (ev.status === "FAILED") {
-                  failed++;
-                } else {
-                  pending++;
-                }
-              });
-
-              const total = evidenceItems.length;
-              const completed = real + ai;
+        ) : filteredCases.length > 0 ? (
+          <div id="list" className="grid g3">
+            {filteredCases.map((c) => {
+              const ps = c.evidence_items || [];
+              const k = getCounts(ps);
+              const total = ps.length || 1;
 
               return (
-                <Link to={`/investigation/${inv.id}`} key={inv.id} className="bg-[#111a31]/80 backdrop-blur-sm rounded-2xl p-5 border border-white/5 hover:border-white/10 hover:bg-[#111a31] transition-all group flex flex-col min-h-[220px]">
-                  <div className="flex items-start justify-between gap-3 mb-1.5">
-                    <h3 className="text-[15px] font-semibold text-white truncate group-hover:text-[#38bdf8] transition-colors" title={inv.title}>
-                      {inv.title || "Untitled Case"}
-                    </h3>
-                    {ai > 0 ? (
-                      <div className="bg-[#ec4899]/10 text-[#ec4899] px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shrink-0">
-                        <Bot className="w-3 h-3" /> {ai} AI
-                      </div>
-                    ) : total > 0 ? (
-                      pending > 0 && completed === 0 ? (
-                        <div className="bg-[#eab308]/10 text-[#eab308] px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shrink-0">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Awaiting results
-                        </div>
-                      ) : pending > 0 && completed > 0 ? (
-                        <div className="bg-[#eab308]/10 text-[#eab308] px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shrink-0">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Partial results
-                        </div>
-                      ) : completed > 0 ? (
-                        <div className="bg-[#22c55e]/10 text-[#22c55e] px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shrink-0">
-                          <CheckCircle className="w-3 h-3" /> All clear
-                        </div>
-                      ) : failed > 0 ? (
-                        <div className="bg-[#ef4444]/10 text-[#ef4444] px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shrink-0">
-                          <AlertCircle className="w-3 h-3" /> Failed
-                        </div>
-                      ) : null
-                    ) : null}
-                  </div>
-
-                  <p className="text-[12.5px] text-[#8b9cb6] mb-6 line-clamp-2 min-h-[36px]">
-                    {inv.description || "No description provided for this case."}
-                  </p>
-
-                  <div className="flex gap-2 mb-3">
-                    {evidenceItems.slice(0, 4).map((evidence) => (
-                      <div key={evidence.id} className="w-[52px] h-[52px] rounded-[10px] bg-[#090e17] overflow-hidden border border-white/5 shrink-0 relative">
-                        <SecureImage 
-                          investigationId={inv.id} 
-                          evidenceId={evidence.id} 
-                          className="w-full h-full object-cover" 
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
-                      </div>
-                    ))}
-                    {evidenceItems.length > 4 && (
-                      <div className="w-[52px] h-[52px] rounded-[10px] bg-[#1e293b]/40 text-[#8b9cb6] border border-white/5 text-[12px] flex items-center justify-center font-medium shrink-0">
-                        +{evidenceItems.length - 4}
-                      </div>
-                    )}
-                    {evidenceItems.length === 0 && (
-                      <div className="w-full h-[52px] flex items-center text-[12px] text-[#475569] italic">
-                        Empty case
-                      </div>
-                    )}
-                  </div>
-
-                  {total > 0 && (
-                    <div className="w-full h-1.5 rounded-full bg-[#090e17] flex overflow-hidden mb-4">
-                      {pending > 0 && <div style={{ width: `${(pending/total)*100}%` }} className="h-full bg-[#38bdf8]" />}
-                      {real > 0 && <div style={{ width: `${(real/total)*100}%` }} className="h-full bg-[#22c55e]" />}
-                      {ai > 0 && <div style={{ width: `${(ai/total)*100}%` }} className="h-full bg-[#ec4899]" />}
-                      {failed > 0 && <div style={{ width: `${(failed/total)*100}%` }} className="h-full bg-[#ef4444]" />}
-                    </div>
-                  )}
-                  {total === 0 && <div className="h-1.5 mb-4"></div>}
-
-                  <div className="flex items-end justify-between mt-auto">
-                    <div>
-                      <div className="text-[12px] text-[#8b9cb6]">{total} {total === 1 ? 'photo' : 'photos'}</div>
-                      <div className="text-[11px] text-[#475569] mt-0.5">Started {formatDate(inv.created_at)}</div>
-                    </div>
-                    <div className="text-[11px] text-[#fbbf24]">
-                      Updated {timeAgo(inv.updated_at)}
+                <article
+                  key={c.id}
+                  className="card case"
+                  tabIndex={0}
+                  onClick={() => navigate(`/investigation/${c.id}`)}
+                  onKeyDown={(e) => e.key === "Enter" && navigate(`/investigation/${c.id}`)}
+                >
+                  <div className="row between">
+                    <h2 style={{ fontSize: "18px" }}>{c.title || "Untitled Case"}</h2>
+                    <div className="row" style={{ gap: "8px" }}>
+                      {k.ai > 0 ? (
+                        <span className="tag ai">🤖 {k.ai} AI</span>
+                      ) : ps.length > 0 ? (
+                        <span className="tag real">✅ All clear</span>
+                      ) : (
+                        <span className="tag wait">Empty</span>
+                      )}
+                      <button
+                        type="button"
+                        className="btn sm danger"
+                        style={{ padding: "4px 8px", fontSize: "12px", border: "1px solid rgba(251,113,133,.3)" }}
+                        title="Delete case"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCaseToDelete(c);
+                          setShowDeleteCaseModal(true);
+                        }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 inline" />
+                      </button>
                     </div>
                   </div>
-                </Link>
+
+                  <div className="strip">
+                    {[0, 1, 2, 3].map((i) => {
+                      const item = ps[i];
+                      if (item) {
+                        return (
+                          <div key={item.id} className="thumb">
+                            <SecureImage
+                              investigationId={c.id}
+                              evidenceId={item.id}
+                              type="download"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={i} className="empty">
+                          {i === 0 && !ps.length ? "＋" : ""}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mix" role="img" aria-label={`${k.real} real, ${k.warn} unsure, ${k.ai} AI-made`}>
+                    <i style={{ width: `${(k.real / total) * 100}%`, background: "var(--real)" }}></i>
+                    <i style={{ width: `${(k.warn / total) * 100}%`, background: "var(--warn)" }}></i>
+                    <i style={{ width: `${(k.ai / total) * 100}%`, background: "var(--ai)" }}></i>
+                  </div>
+
+                  <div className="row between sm" style={{ marginTop: "12px" }}>
+                    <span className="muted">
+                      {ps.length} {ps.length === 1 ? "photo" : "photos"}
+                    </span>
+                    <span className="faint">Updated {timeAgo(c.updated_at)}</span>
+                  </div>
+
+                  <div className="faint sm" style={{ marginTop: "4px" }}>
+                    Started {fmtDate(c.created_at)}
+                  </div>
+                </article>
               );
             })}
           </div>
+        ) : (
+          <div className="card empty-state" style={{ gridColumn: "1/-1" }}>
+            <div className="emo">🕵️</div>
+            <h3>{searchQuery || filter !== "all" ? "No cases match" : "No cases yet"}</h3>
+            <p>
+              {searchQuery || filter !== "all"
+                ? "Try a different search or filter."
+                : "Create your first case to start investigating."}
+            </p>
+          </div>
         )}
-      </motion.div>
+
+      </div>
+
+      {/* New Case Creation Modal */}
+      {showCreateModal && (
+        <div
+          className="veil"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCreateModal(false);
+          }}
+        >
+          <div className="modal" role="dialog" aria-modal="true">
+            <h2>Start a new case</h2>
+            <p className="muted sm" style={{ margin: "6px 0 18px" }}>
+              A case keeps related photos together – like &ldquo;Fake news hunt&rdquo; or &ldquo;Is this profile real?&rdquo;
+            </p>
+            <form onSubmit={handleCreateCase}>
+              <div className="field">
+                <label>Case name</label>
+                <input
+                  id="nc-name"
+                  maxLength={60}
+                  placeholder="e.g. Viral photo from the group chat"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div className="row" style={{ justifyContent: "flex-end", gap: "12px", marginTop: "20px" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setShowCreateModal(false)}
+                  disabled={creating}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn pri"
+                  disabled={creating || !newTitle.trim()}
+                >
+                  {creating ? "Creating..." : "Create case"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Pre-Analysis Photo Upload & Assignment Modal */}
+      {showUploadModal && (
+        <div
+          className="veil"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowUploadModal(false);
+          }}
+        >
+          <div className="modal" role="dialog" aria-modal="true" style={{ width: "min(560px, 92vw)" }}>
+            <h2>Where should this photo go?</h2>
+            <p className="muted sm" style={{ margin: "6px 0 18px" }}>
+              Cases are like folders. Pick one or start a new one.
+            </p>
+
+            {previewUrl && (
+              <div className="row" style={{ marginBottom: "16px", gap: "14px" }}>
+                <div
+                  style={{
+                    width: "64px",
+                    height: "64px",
+                    borderRadius: "12px",
+                    overflow: "hidden",
+                    border: "1px solid var(--line)",
+                    background: "#0b1630",
+                    flexShrink: 0,
+                  }}
+                >
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>Photo name</label>
+                    <input
+                      type="text"
+                      value={uploadPhotoName}
+                      onChange={(e) => setUploadPhotoName(e.target.value)}
+                      placeholder="e.g. Street portrait"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="field">
+              <label>Choose a case</label>
+              <select
+                value={caseMode === "new" ? "__new" : uploadTargetCaseId}
+                onChange={(e) => {
+                  if (e.target.value === "__new") {
+                    setCaseMode("new");
+                  } else {
+                    setCaseMode("existing");
+                    setUploadTargetCaseId(e.target.value);
+                  }
+                }}
+              >
+                {investigations.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.title || "Untitled Case"}
+                  </option>
+                ))}
+                <option value="__new">＋ Start a new case…</option>
+              </select>
+            </div>
+
+            {caseMode === "new" && (
+              <div className="field">
+                <label>Name your new case</label>
+                <input
+                  value={uploadNewCaseName}
+                  onChange={(e) => setUploadNewCaseName(e.target.value)}
+                  placeholder="e.g. Is this photo fake?"
+                  maxLength={60}
+                />
+              </div>
+            )}
+
+            <div className="row" style={{ justifyContent: "flex-end", gap: "12px", marginTop: "20px" }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowUploadModal(false)}
+                disabled={uploadingAndScanning}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn pri"
+                onClick={handleConfirmUploadAndScan}
+                disabled={uploadingAndScanning}
+              >
+                {uploadingAndScanning ? "Starting scan..." : "Start scan →"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Case Confirmation Modal */}
+      {showDeleteCaseModal && caseToDelete && (
+        <div className="veil" onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteCaseModal(false); }}>
+          <div className="modal" role="dialog" aria-modal="true">
+            <h2 style={{ fontSize: "20px", fontWeight: 700 }}>Delete this case?</h2>
+            <p className="muted" style={{ margin: "10px 0 22px", fontSize: "14px", lineHeight: "1.5" }}>
+              &ldquo;{caseToDelete.title || "Untitled Case"}&rdquo; and its {(caseToDelete.evidence_items || []).length} photos will be removed. This can&apos;t be undone.
+            </p>
+            <div className="row" style={{ justifyContent: "flex-end", gap: "12px" }}>
+              <button className="btn" onClick={() => setShowDeleteCaseModal(false)} disabled={deletingCase}>
+                Keep it
+              </button>
+              <button className="btn danger" onClick={handleDeleteCase} disabled={deletingCase}>
+                {deletingCase ? "Deleting..." : "Yes, delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notifications */}
+      <div className="toasts">
+        {toasts.map((t, i) => (
+          <div key={i} className="toast">
+            {t}
+          </div>
+        ))}
+      </div>
+
     </div>
   );
 }

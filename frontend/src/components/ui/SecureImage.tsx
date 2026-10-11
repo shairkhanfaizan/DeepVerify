@@ -3,13 +3,16 @@ import { API_BASE } from "../../services/api";
 import { Loader2, Image as ImageIcon } from "lucide-react";
 
 interface SecureImageProps {
-  investigationId: string;
+  investigationId?: string;
   evidenceId: string;
-  type?: "download" | "heatmap";
+  type?: "download" | "heatmap" | "spectrum";
   alt?: string;
   className?: string;
   fallbackClassName?: string;
 }
+
+// Global in-memory cache for instant zero-latency image reuse
+const blobCache = new Map<string, string>();
 
 export function SecureImage({ 
   investigationId, 
@@ -19,22 +22,37 @@ export function SecureImage({
   className = "",
   fallbackClassName = ""
 }: SecureImageProps) {
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const cacheKey = `${evidenceId}_${type}`;
+  const cachedUrl = blobCache.get(cacheKey) || null;
+  const [imgUrl, setImgUrl] = useState<string | null>(cachedUrl);
+  const [loading, setLoading] = useState<boolean>(!cachedUrl);
+  const [error, setError] = useState<boolean>(false);
 
   useEffect(() => {
-    let objectUrl: string | null = null;
     let mounted = true;
+
+    if (!evidenceId) {
+      setLoading(false);
+      return;
+    }
+
+    // If already in memory cache, use it immediately
+    if (blobCache.has(cacheKey)) {
+      setImgUrl(blobCache.get(cacheKey)!);
+      setLoading(false);
+      return;
+    }
 
     async function loadImage() {
       try {
         setLoading(true);
         setError(false);
-        const endpoint = `/api/v2/investigations/${investigationId}/evidence/${evidenceId}/${type}`;
+        const endpoint = investigationId
+          ? `/api/v2/investigations/${investigationId}/evidence/${evidenceId}/${type}`
+          : `/api/v2/investigations/evidence/${evidenceId}/${type}`;
         
         const response = await fetch(`${API_BASE}${endpoint}`, {
-          credentials: 'include' // Important to send auth cookies
+          credentials: 'include'
         });
         
         if (!response.ok) {
@@ -43,7 +61,8 @@ export function SecureImage({
         
         const blob = await response.blob();
         if (mounted) {
-          objectUrl = URL.createObjectURL(blob);
+          const objectUrl = URL.createObjectURL(blob);
+          blobCache.set(cacheKey, objectUrl);
           setImgUrl(objectUrl);
         }
       } catch (err) {
@@ -53,17 +72,12 @@ export function SecureImage({
       }
     }
 
-    if (investigationId && evidenceId) {
-      loadImage();
-    }
+    loadImage();
 
     return () => {
       mounted = false;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
     };
-  }, [investigationId, evidenceId, type]);
+  }, [investigationId, evidenceId, type, cacheKey]);
 
   if (loading) {
     return (

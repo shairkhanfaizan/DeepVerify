@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, computed_field
 import re
 from datetime import datetime
 from typing import Optional, List
@@ -59,7 +59,19 @@ class EvidenceItemResponse(BaseModel):
     observations: List[EvidenceObservationResponse] = []
     analysis_results: List[AnalysisResultResponse] = []
     
+    @computed_field
+    @property
+    def original_filename(self) -> Optional[str]:
+        for obs in self.observations:
+            if obs.signal_type in ("ORIGINAL_FILENAME", "EVIDENCE_NAME"):
+                return obs.value
+        return None
+
     model_config = ConfigDict(from_attributes=True)
+
+class EvidenceItemUpdate(BaseModel):
+    name: Optional[str] = None
+    notes: Optional[str] = None
 
 class InvestigationCreate(BaseModel):
     title: str
