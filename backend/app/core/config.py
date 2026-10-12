@@ -43,6 +43,34 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secret(self) -> 'Settings':
+        # Auto-resolve paths
+        def _resolve(p: Optional[str]) -> Optional[str]:
+            if not p:
+                return None
+            path = Path(p)
+            if path.is_absolute() and path.exists():
+                return str(path)
+            if path.exists():
+                return str(path.resolve())
+            backend_dir = Path(__file__).resolve().parent.parent.parent
+            repo_dir = backend_dir.parent
+            for base in [backend_dir, repo_dir]:
+                if (base / p).exists():
+                    return str((base / p).resolve())
+                cleaned = p.lstrip("./")
+                if (base / cleaned).exists():
+                    return str((base / cleaned).resolve())
+            return str(path)
+
+        if self.EXP001_SPATIAL_CONFIG_PATH:
+            self.EXP001_SPATIAL_CONFIG_PATH = _resolve(self.EXP001_SPATIAL_CONFIG_PATH) or self.EXP001_SPATIAL_CONFIG_PATH
+        if self.EXP002_FREQUENCY_CONFIG_PATH:
+            self.EXP002_FREQUENCY_CONFIG_PATH = _resolve(self.EXP002_FREQUENCY_CONFIG_PATH) or self.EXP002_FREQUENCY_CONFIG_PATH
+        if self.EXP001_SPATIAL_WEIGHTS_PATH:
+            self.EXP001_SPATIAL_WEIGHTS_PATH = _resolve(self.EXP001_SPATIAL_WEIGHTS_PATH) or self.EXP001_SPATIAL_WEIGHTS_PATH
+        if self.EXP002_FREQUENCY_WEIGHTS_PATH:
+            self.EXP002_FREQUENCY_WEIGHTS_PATH = _resolve(self.EXP002_FREQUENCY_WEIGHTS_PATH) or self.EXP002_FREQUENCY_WEIGHTS_PATH
+
         if self.ENVIRONMENT == "production":
             default_secret = "supersecretkey_please_change_in_production"
             if not self.SECRET_KEY or self.SECRET_KEY == default_secret:
