@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 from app.adapters.base import ModelAdapter, SignalResult, ExplanationResult
 from deepverify_ml.inference import FrequencyInferenceModel
 
@@ -25,7 +25,7 @@ class DeepVerifyFrequencyAdapter:
         self.model.load(weights_path, device=device)
         self._loaded = True
 
-    def preprocess(self, file_path: str) -> Any:
+    def preprocess(self, file_path: Union[str, bytes]) -> Any:
         return self.model.preprocess(file_path)
 
     def infer(self, tensor: Any) -> List[SignalResult]:

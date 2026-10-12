@@ -1,4 +1,5 @@
 import asyncio
+from typing import Union
 import os
 import uuid
 import io
@@ -47,7 +48,7 @@ def load_v2_adapters():
         print(f"Failed to load V2 adapters: {e}")
         v2_adapters_loaded = False
 
-def _run_v2_inference(file_path: str, policy):
+def _run_v2_inference(file_input: Union[str, bytes], policy):
     if not v2_adapters_loaded:
         raise RuntimeError("MODEL_ADAPTERS_UNAVAILABLE: V2 inference adapters are not loaded. Cannot run inference on uninitialized models.")
     
@@ -55,14 +56,14 @@ def _run_v2_inference(file_path: str, policy):
     
     # Spatial
     if "deepverify-spatial-v1" in policy.participating_model_ids:
-        spatial_tensor = spatial_adapter.preprocess(file_path)
+        spatial_tensor = spatial_adapter.preprocess(file_input)
         spatial_signals = spatial_adapter.infer(spatial_tensor)
         spatial_exp = spatial_adapter.explain(spatial_tensor)
         spatial_heatmap = spatial_exp.heatmap_array if spatial_exp else None
     
     # Frequency
     if "deepverify-frequency-v1" in policy.participating_model_ids:
-        freq_tensor = frequency_adapter.preprocess(file_path)
+        freq_tensor = frequency_adapter.preprocess(file_input)
         freq_signals = frequency_adapter.infer(freq_tensor)
     
     return spatial_signals, spatial_heatmap, freq_signals
@@ -90,8 +91,15 @@ async def process_analysis_job(job_id: str, evidence_id: str, file_path: str):
         
     heatmap_uri = None
     try:
+        storage = get_storage_provider()
+        # If file_path is an R2 key or not on local filesystem, fetch bytes from storage
+        if isinstance(file_path, str) and not os.path.isfile(file_path):
+            file_input = await storage.get_file(file_path)
+        else:
+            file_input = file_path
+
         async with get_inference_semaphore():
-            results = await asyncio.to_thread(_run_v2_inference, file_path, policy)
+            results = await asyncio.to_thread(_run_v2_inference, file_input, policy)
             
         spatial_signals, spatial_heatmap, freq_signals = results
         

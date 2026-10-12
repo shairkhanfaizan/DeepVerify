@@ -62,3 +62,81 @@ async def test_local_storage_failed_write(temp_storage_dir, monkeypatch):
     # Verify cleanup (it shouldn't exist)
     expected_path = Path(temp_storage_dir) / f"{file_hash}.jpg"
     assert not expected_path.exists()
+
+@pytest.mark.asyncio
+async def test_r2_storage_provider():
+    from unittest.mock import MagicMock
+    import io
+    from app.core.storage import R2StorageProvider
+
+    mock_s3 = MagicMock()
+    # Mock get_object response
+    mock_body = MagicMock()
+    mock_body.read.return_value = b"image_data_bytes"
+    mock_s3.get_object.return_value = {"Body": mock_body}
+
+    provider = R2StorageProvider(
+        account_id="fake_account_id",
+        access_key_id="fake_key",
+        secret_access_key="fake_secret",
+        bucket_name="deepverify-evidence",
+        public_url="https://media.deepverify.app",
+        s3_client=mock_s3,
+    )
+
+    # Test save
+    key = await provider.save_file("hash123", b"image_data_bytes", "jpg")
+    assert key == "evidence/hash123.jpg"
+    mock_s3.put_object.assert_called_once_with(
+        Bucket="deepverify-evidence",
+        Key="evidence/hash123.jpg",
+        Body=b"image_data_bytes",
+        ContentType="image/jpeg",
+    )
+
+    # Test get
+    content = await provider.get_file(key)
+    assert content == b"image_data_bytes"
+    mock_s3.get_object.assert_called_once_with(
+        Bucket="deepverify-evidence",
+        Key="evidence/hash123.jpg",
+    )
+
+    # Test delete
+    deleted = await provider.delete_file(key)
+    assert deleted is True
+    mock_s3.delete_object.assert_called_once_with(
+        Bucket="deepverify-evidence",
+        Key="evidence/hash123.jpg",
+    )
+
+    # Test public URL
+    assert provider.get_public_url(key) == "https://media.deepverify.app/evidence/hash123.jpg"
+
+@pytest.mark.asyncio
+async def test_storage_provider_factory(monkeypatch):
+    from app.core.config import settings
+    from app.core.storage import get_storage_provider, LocalStorageProvider, R2StorageProvider
+
+    # Default settings -> LocalStorageProvider
+    monkeypatch.setattr(settings, "STORAGE_BACKEND", "local")
+    monkeypatch.setattr(settings, "R2_ACCOUNT_ID", None)
+    monkeypatch.setattr(settings, "R2_ACCESS_KEY_ID", None)
+    monkeypatch.setattr(settings, "R2_SECRET_ACCESS_KEY", None)
+    monkeypatch.setattr(settings, "R2_BUCKET_NAME", None)
+
+    provider = get_storage_provider()
+    assert isinstance(provider, LocalStorageProvider)
+
+    # R2 configured -> R2StorageProvider
+    monkeypatch.setattr(settings, "STORAGE_BACKEND", "r2")
+    monkeypatch.setattr(settings, "R2_ACCOUNT_ID", "acc123")
+    monkeypatch.setattr(settings, "R2_ACCESS_KEY_ID", "key123")
+    monkeypatch.setattr(settings, "R2_SECRET_ACCESS_KEY", "sec123")
+    monkeypatch.setattr(settings, "R2_BUCKET_NAME", "my-bucket")
+
+    r2_provider = get_storage_provider()
+    assert isinstance(r2_provider, R2StorageProvider)
+    assert r2_provider.bucket == "my-bucket"
+    assert r2_provider.account_id == "acc123"
+
