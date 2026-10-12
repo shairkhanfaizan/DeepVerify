@@ -1,4 +1,5 @@
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+const rawBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
+export const API_BASE = rawBase.replace(/\/+$/, '');
 
 export class ApiError extends Error {
   status: number;
@@ -10,7 +11,8 @@ export class ApiError extends Error {
 }
 
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  const url = `${API_BASE}${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = API_BASE ? `${API_BASE}${cleanEndpoint}` : cleanEndpoint;
   
   // Default to application/json if body is present and not FormData
   if (options.body && !(options.body instanceof FormData)) {
@@ -23,7 +25,13 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   // Ensure credentials are included so HttpOnly cookies are sent
   options.credentials = 'include';
   
-  const response = await fetch(url, options);
+  let response: Response;
+  try {
+    response = await fetch(url, options);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    throw new ApiError(0, `Cannot connect to server: ${errorMsg}`);
+  }
   
   if (!response.ok) {
     if (response.status === 401) {

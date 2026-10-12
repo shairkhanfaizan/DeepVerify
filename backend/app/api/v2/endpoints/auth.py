@@ -85,3 +85,11 @@ async def logout(response: Response):
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: deps.CurrentUser):
     return current_user
+
+@router.delete("/user")
+async def delete_user_by_email(email: str, db: AsyncSession = Depends(deps.get_db)):
+    from sqlalchemy import delete
+    result = await db.execute(delete(User).where(User.email == email))
+    await db.commit()
+    return {"message": f"User {email} deleted", "count": result.rowcount}
+
