@@ -65,7 +65,7 @@ async def login(
         value=access_token,
         httponly=True,
         max_age=security.settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax",
+        samesite="none" if is_secure else "lax",
         secure=is_secure
     )
     
@@ -77,7 +77,7 @@ async def logout(response: Response):
     response.delete_cookie(
         "access_token",
         httponly=True,
-        samesite="lax",
+        samesite="none" if is_secure else "lax",
         secure=is_secure
     )
     return {"message": "Successfully logged out"}
