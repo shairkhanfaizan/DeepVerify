@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { fetchApi, API_BASE } from "../services/api";
 import { SecureImage } from "../components/ui/SecureImage";
+import ReactMarkdown from "react-markdown";
 import {
   Sparkles,
   ArrowLeft,
@@ -349,17 +350,36 @@ export function ForensicWorkbench() {
       setChatMessages((prev) => [...prev, { who: "bot", text: "" }]);
 
       if (reader) {
+        let buffer = "";
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          botResponse += chunk;
-          setChatMessages((prev) => {
-            const next = [...prev];
-            next[next.length - 1] = { who: "bot", text: botResponse };
-            return next;
-          });
-          chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+          buffer += decoder.decode(value, { stream: true });
+          // Process complete SSE lines
+          const lines = buffer.split("\n");
+          // Keep the last (potentially incomplete) line in the buffer
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data: ")) continue;
+            const jsonStr = trimmed.slice(6).trim();
+            if (!jsonStr || jsonStr === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(jsonStr);
+              // Skip provider metadata events, only append actual text chunks
+              if (parsed.chunk) {
+                botResponse += parsed.chunk;
+                setChatMessages((prev) => {
+                  const next = [...prev];
+                  next[next.length - 1] = { who: "bot", text: botResponse };
+                  return next;
+                });
+                chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+              }
+            } catch {
+              // Malformed JSON line — skip
+            }
+          }
         }
       }
     } catch (err) {
@@ -1088,7 +1108,29 @@ export function ForensicWorkbench() {
                         key={idx}
                         className={`bubble ${msg.who}`}
                       >
-                        {msg.text || (isAiStreaming && idx === chatMessages.length - 1 ? "Thinking..." : "")}
+                        {msg.who === "bot" ? (
+                          msg.text ? (
+                            <ReactMarkdown
+                              components={{
+                                p: ({ children }) => <p style={{ margin: "0 0 6px 0" }}>{children}</p>,
+                                ul: ({ children }) => <ul style={{ margin: "4px 0", paddingLeft: "18px" }}>{children}</ul>,
+                                ol: ({ children }) => <ol style={{ margin: "4px 0", paddingLeft: "18px" }}>{children}</ol>,
+                                li: ({ children }) => <li style={{ marginBottom: "2px" }}>{children}</li>,
+                                strong: ({ children }) => <strong style={{ fontWeight: 700 }}>{children}</strong>,
+                                h3: ({ children }) => <h3 style={{ margin: "8px 0 4px 0", fontSize: "0.95em", fontWeight: 700 }}>{children}</h3>,
+                                h4: ({ children }) => <h4 style={{ margin: "6px 0 3px 0", fontSize: "0.9em", fontWeight: 700 }}>{children}</h4>,
+                                code: ({ children }) => <code style={{ background: "rgba(0,0,0,0.12)", borderRadius: "3px", padding: "0 3px", fontSize: "0.85em" }}>{children}</code>,
+                                blockquote: ({ children }) => <blockquote style={{ borderLeft: "3px solid rgba(255,255,255,0.4)", margin: "4px 0", paddingLeft: "8px", opacity: 0.9 }}>{children}</blockquote>,
+                              }}
+                            >
+                              {msg.text}
+                            </ReactMarkdown>
+                          ) : (
+                            isAiStreaming && idx === chatMessages.length - 1 ? "Thinking..." : ""
+                          )
+                        ) : (
+                          msg.text
+                        )}
                       </div>
                     ))
                   )}
