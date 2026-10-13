@@ -203,7 +203,7 @@ async def upload_evidence(
     
     # Save to storage
     storage = get_storage_provider()
-    storage_key = await storage.save_file(file.filename, file_bytes, valid_ext)
+    storage_key = await storage.save_file(file_hash, file_bytes, valid_ext)
     
     try:
         evidence = EvidenceItem(

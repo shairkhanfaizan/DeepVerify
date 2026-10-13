@@ -1,3 +1,5 @@
+const PRODUCTION_BACKEND_URL = 'https://deepverify-backend-p4l6.onrender.com';
+
 function resolveApiBase(): string {
   const envBase = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
   
@@ -6,13 +8,14 @@ function resolveApiBase(): string {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     if (!isLocalhost) {
       if (!envBase || envBase.includes('localhost') || envBase.includes('127.0.0.1')) {
-        // Use relative URL so Vercel's reverse proxy automatically routes /api to Render
-        return '';
+        // Direct to Render backend URL so requests NEVER get hijacked by Vercel's SPA index.html
+        return PRODUCTION_BACKEND_URL;
       }
+      return envBase;
     }
   }
   
-  return envBase;
+  return envBase || 'http://localhost:8000';
 }
 
 export const API_BASE = resolveApiBase();
@@ -96,6 +99,9 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   try {
     return await response.json();
   } catch {
-    return null;
+    throw new ApiError(
+      response.status,
+      `Invalid response format received from server (expected JSON, received ${response.headers.get('content-type') || 'text/html'})`
+    );
   }
 }

@@ -14,7 +14,12 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440 # 24 hours
     ENVIRONMENT: str = "development"
-    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://deepverify-frontend.vercel.app",
+        "*",
+    ]
 
     # Model Loading
     EXP001_SPATIAL_CONFIG_PATH: str = "experiments/configs/EXP-001.yaml"

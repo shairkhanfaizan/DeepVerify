@@ -159,9 +159,10 @@ export function Dashboard() {
       } else {
         navigate(`/investigation/${invId}`);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      alert("Failed to initialize scan.");
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Failed to initialize scan: ${msg}`);
     } finally {
       setCreating(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

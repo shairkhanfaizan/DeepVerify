@@ -127,9 +127,10 @@ export function ReportsFindings() {
         };
       });
       setEditingPhotoId(null);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      alert("Failed to save photo name.");
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Failed to save photo name: ${msg}`);
     } finally {
       setSavingPhotoName(false);
     }
@@ -199,9 +200,10 @@ export function ReportsFindings() {
         setSelectedFileForUpload(null);
         navigate(`/investigation/${targetInvId}`);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      alert("Failed to upload and analyze photo.");
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Failed to upload and analyze photo: ${msg}`);
     } finally {
       setUploadingAndScanning(false);
     }
