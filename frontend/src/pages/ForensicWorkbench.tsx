@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { fetchApi, API_BASE } from "../services/api";
+import { fetchApi, API_BASE, getAuthHeaders } from "../services/api";
 import { SecureImage } from "../components/ui/SecureImage";
 import ReactMarkdown from "react-markdown";
 import {
@@ -333,7 +333,7 @@ export function ForensicWorkbench() {
       const res = await fetch(`${API_BASE}/api/v2/investigations/${id}/evidence/${evidenceId}/assistant`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           question: q,
           google_api_key: apiKey,

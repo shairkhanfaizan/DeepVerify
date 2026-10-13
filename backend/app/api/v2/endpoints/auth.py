@@ -6,19 +6,21 @@ from sqlalchemy.exc import IntegrityError
 from app.api import deps
 from app.core import security
 from app.db.models import User
-from app.schemas.auth import UserCreate, UserResponse, Token
+from app.schemas.auth import UserCreate, UserResponse, Token, LoginResponse
 
 router = APIRouter()
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
+    response: Response,
     user_in: UserCreate,
     db: AsyncSession = Depends(deps.get_db)
 ):
+    clean_email = user_in.email.strip().lower()
     if len(user_in.password.encode('utf-8')) > 72:
         raise HTTPException(status_code=400, detail="Password is too long (max 72 bytes).")
         
-    stmt = select(User).where(User.email == user_in.email)
+    stmt = select(User).where(User.email.ilike(clean_email))
     result = await db.execute(stmt)
     if result.scalar_one_or_none():
         raise HTTPException(
@@ -27,7 +29,7 @@ async def register_user(
         )
         
     hashed_password = security.get_password_hash(user_in.password)
-    user = User(email=user_in.email, hashed_password=hashed_password)
+    user = User(email=clean_email, hashed_password=hashed_password)
     db.add(user)
     
     try:
@@ -39,16 +41,34 @@ async def register_user(
             status_code=400,
             detail="A user with this email already exists."
         )
-        
-    return user
 
-@router.post("/login")
+    access_token = security.create_access_token(user.id)
+    is_secure = (security.settings.ENVIRONMENT == "production")
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        max_age=security.settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        samesite="none" if is_secure else "lax",
+        secure=is_secure
+    )
+        
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        access_token=access_token,
+        token_type="bearer",
+    )
+
+@router.post("/login", response_model=LoginResponse)
 async def login(
     response: Response,
     user_in: UserCreate,
     db: AsyncSession = Depends(deps.get_db)
 ):
-    stmt = select(User).where(User.email == user_in.email)
+    clean_email = user_in.email.strip().lower()
+    stmt = select(User).where(User.email.ilike(clean_email))
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
     
@@ -69,7 +89,18 @@ async def login(
         secure=is_secure
     )
     
-    return {"message": "Successfully logged in"}
+    return LoginResponse(
+        message="Successfully logged in",
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            role=user.role,
+            access_token=access_token,
+            token_type="bearer",
+        )
+    )
 
 @router.post("/logout")
 async def logout(response: Response):

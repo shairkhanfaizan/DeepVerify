@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { API_BASE } from "../../services/api";
+import { API_BASE, getAuthHeaders } from "../../services/api";
 import { Loader2, Image as ImageIcon } from "lucide-react";
 
 interface SecureImageProps {
@@ -52,6 +52,7 @@ export function SecureImage({
           : `/api/v2/investigations/evidence/${evidenceId}/${type}`;
         
         const response = await fetch(`${API_BASE}${endpoint}`, {
+          headers: getAuthHeaders(),
           credentials: 'include'
         });
         

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { fetchApi } from '../services/api';
+import { fetchApi, setAuthToken } from '../services/api';
 
 export interface User {
   id: string;
@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await fetchApi('/api/v2/auth/me');
       setUser(data);
     } catch {
+      setAuthToken(null);
       setUser(null);
     } finally {
       setLoading(false);
@@ -36,6 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
     
     const handleUnauthorized = () => {
+      setAuthToken(null);
       setUser(null);
     };
     
@@ -46,19 +48,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    await fetchApi('/api/v2/auth/login', {
+    const data = await fetchApi('/api/v2/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
     
-    await checkAuth();
+    if (data?.access_token) {
+      setAuthToken(data.access_token);
+    }
+    
+    if (data?.user) {
+      setUser(data.user);
+    } else {
+      await checkAuth();
+    }
   };
 
   const register = async (email: string, password: string) => {
-    await fetchApi('/api/v2/auth/register', {
+    const data = await fetchApi('/api/v2/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    
+    if (data?.access_token) {
+      setAuthToken(data.access_token);
+    }
     
     // Automatically log in after registration
     await login(email, password);
@@ -70,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Ignore errors on logout
     }
+    setAuthToken(null);
     setUser(null);
   };
 

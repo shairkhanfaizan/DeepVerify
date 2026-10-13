@@ -2,6 +2,7 @@ import { useRef, useMemo, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
+import { getAuthHeaders } from '../services/api';
 
 // Define props
 interface ThreeDHeatmapProps {
@@ -24,12 +25,12 @@ function HeatmapSurface({ originalImageSrc, heatmapSrc }: { originalImageSrc: st
     
     const loadImages = async () => {
       try {
-        const origRes = await fetch(originalImageSrc, { credentials: "include" });
+        const origRes = await fetch(originalImageSrc, { headers: getAuthHeaders(), credentials: "include" });
         if (!origRes.ok) throw new Error("Original fetch failed");
         const origBlob = await origRes.blob();
         origObjUrl = URL.createObjectURL(origBlob);
         
-        const heatRes = await fetch(heatmapSrc, { credentials: "include" });
+        const heatRes = await fetch(heatmapSrc, { headers: getAuthHeaders(), credentials: "include" });
         if (!heatRes.ok) throw new Error("Heatmap fetch failed");
         const heatBlob = await heatRes.blob();
         heatObjUrl = URL.createObjectURL(heatBlob);

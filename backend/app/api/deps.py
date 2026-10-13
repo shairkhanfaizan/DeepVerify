@@ -13,23 +13,40 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
 
-def get_token_from_cookie(request: Request) -> str | None:
-    return request.cookies.get("access_token")
+def get_token_from_request(request: Request) -> str | None:
+    # 1. Check standard Authorization header
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        parts = auth_header.strip().split(" ", 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            return parts[1]
+        elif len(parts) == 1:
+            return parts[0]
+
+    # 2. Check query parameter (token) for direct downloads / img tags
+    query_token = request.query_params.get("token")
+    if query_token:
+        return query_token
+
+    # 3. Check HttpOnly cookie
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        if cookie_token.startswith("Bearer "):
+            return cookie_token.split(" ")[1]
+        return cookie_token
+
+    return None
 
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ) -> User:
-    token = get_token_from_cookie(request)
+    token = get_token_from_request(request)
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
-    
-    # If the token comes from standard Bearer header but we are extracting it via custom logic:
-    if token.startswith("Bearer "):
-        token = token.split(" ")[1]
 
     try:
         payload = jwt.decode(

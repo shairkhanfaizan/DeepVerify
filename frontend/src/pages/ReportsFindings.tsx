@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { fetchApi, API_BASE } from "../services/api";
+import { fetchApi, API_BASE, getAuthHeaders } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import { SecureImage } from "../components/ui/SecureImage";
 import { 
@@ -277,7 +277,7 @@ export function ReportsFindings() {
     try {
       setDownloadingPdf(true);
       const url = `${API_BASE}/api/v2/investigations/${selectedCaseId}/report`;
-      const res = await fetch(url, { method: "GET", credentials: "include" });
+      const res = await fetch(url, { method: "GET", headers: getAuthHeaders(), credentials: "include" });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const blobUrl = window.URL.createObjectURL(blob);
