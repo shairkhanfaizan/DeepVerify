@@ -6,6 +6,16 @@ This document provides the authoritative, source-code-verified architecture of t
 
 ## 1. Concrete System Architecture Diagram
 
+> **Visual Architecture Diagram**:
+> 
+> Open the standalone vector diagram directly: [architecture_diagram.svg](file:///home/shairkhan-faizan/Documents/College/SEM5%20MINI%20PROJECT/DeepVerify/docs/architecture_diagram.svg) or open the browser-ready viewer at [architecture_view.html](file:///home/shairkhan-faizan/Documents/College/SEM5%20MINI%20PROJECT/DeepVerify/docs/architecture_view.html).
+> To view this rendered inside this IDE editor, press **Ctrl+Shift+V** (or click the **Open Preview** icon in the top right corner).
+
+![DeepVerify System Architecture Diagram](architecture_diagram.svg)
+
+<details>
+<summary><b>Click to expand Mermaid source text</b></summary>
+
 ```mermaid
 flowchart TD
     %% ==========================================
@@ -128,6 +138,7 @@ flowchart TD
     R_Inv -->|Evidence context| GeminiService
     R_Inv -->|Compile case findings| PDFService
 ```
+</details>
 
 ---
 

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepVerify · System Architecture Diagram</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #070d1e;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+    }
+    header {
+      width: 100%;
+      max-width: 1480px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding: 16px 24px;
+      background: #0a142c;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+    .title h1 {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(90deg, #00C2FF, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .title p {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: #0284c7;
+      color: #ffffff;
+      border: 1px solid #38bdf8;
+    }
+    .btn-primary:hover {
+      background: #0369a1;
+    }
+    .btn-secondary {
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+    }
+    .btn-secondary:hover {
+      background: #334155;
+      color: #f8fafc;
+    }
+    .diagram-container {
+      width: 100%;
+      max-width: 1480px;
+      background: #070d1e;
+      border: 1px solid #1e3a8a;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      overflow-x: auto;
+    }
+    .diagram-container img, .diagram-container object {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 12px;
+    }
+    footer {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #64748b;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="title">
+      <h1>DeepVerify · System Architecture Visualizer</h1>
+      <p>Source-code-verified concrete architecture across Client, Gateway, Dual ML Pipeline &amp; Storage</p>
+    </div>
+    <div class="actions">
+      <a class="btn btn-secondary" href="architecture_diagram.svg" target="_blank" download="deepverify_architecture.svg">⬇ Download SVG</a>
+      <a class="btn btn-primary" href="SYSTEM_ARCHITECTURE.md">📄 Open Markdown Spec</a>
+    </div>
+  </header>
+
+  <div class="diagram-container">
+    <object data="architecture_diagram.svg" type="image/svg+xml">
+      <img src="architecture_diagram.svg" alt="DeepVerify System Architecture Diagram" />
+    </object>
+  </div>
+
+  <footer>
+    DeepVerify Forensic System Architecture · Verified against actual repository implementation
+  </footer>
+
+</body>
+</html>

@@ -6,6 +6,16 @@
 
 ## 1. Concrete System Architecture Diagram
 
+> **Visual Architecture Diagram**:
+> 
+> Open the standalone vector diagram directly: [architecture_diagram.svg](file:///home/shairkhan-faizan/Documents/College/SEM5%20MINI%20PROJECT/DeepVerify/docs/architecture_diagram.svg) or open [architecture_view.html](file:///home/shairkhan-faizan/Documents/College/SEM5%20MINI%20PROJECT/DeepVerify/docs/architecture_view.html).
+> To preview inside this IDE editor, press **Ctrl+Shift+V** (or click the **Open Preview** icon in the top right corner).
+
+![DeepVerify System Architecture Diagram](architecture_diagram.svg)
+
+<details>
+<summary><b>Click to expand Mermaid source text</b></summary>
+
 ```mermaid
 flowchart TD
     subgraph TIER1 ["1. Presentation Tier (frontend/src/)"]
@@ -66,6 +76,7 @@ flowchart TD
         R_Inv --> Gemini & PDFGen
     end
 ```
+</details>
 
 ---
 
