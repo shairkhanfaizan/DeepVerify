@@ -26,9 +26,16 @@ class Settings(BaseSettings):
     MAX_IMAGE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
     MAX_IMAGE_RESOLUTION: int = 4096
 
-    # Storage & Object Store (Local vs Cloudflare R2)
-    STORAGE_BACKEND: str = "local" # "local" or "r2"
+    # Storage & Object Store (Local, Supabase, Cloudflare R2)
+    STORAGE_BACKEND: str = "local" # "local", "supabase", "r2"
     STORAGE_DIR: str = "storage"
+
+    # Supabase Object Storage (1 GB free, no credit card required)
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
+    SUPABASE_BUCKET_NAME: str = "deepverify-evidence"
+
+    # S3 / Cloudflare R2 Object Storage
     R2_ACCOUNT_ID: Optional[str] = None
     R2_ACCESS_KEY_ID: Optional[str] = None
     R2_SECRET_ACCESS_KEY: Optional[str] = None

@@ -151,7 +151,114 @@ class R2StorageProvider:
             ExpiresIn=expires_in,
         )
 
+class SupabaseStorageProvider:
+    """
+    Supabase Storage Provider.
+    Free tier: 1 GB free persistent object storage, zero credit card required.
+    Interacts directly with Supabase Storage REST API using async HTTP.
+    """
+    def __init__(
+        self,
+        url: str,
+        key: str,
+        bucket_name: str = "deepverify-evidence",
+        http_client: Optional[Any] = None,
+    ):
+        self.base_url = url.rstrip("/")
+        self.key = key
+        self.bucket = bucket_name
+        self._client = http_client
+
+    def _get_headers(self, content_type: Optional[str] = None) -> dict:
+        headers = {
+            "apikey": self.key,
+            "Authorization": f"Bearer {self.key}",
+        }
+        if content_type:
+            headers["Content-Type"] = content_type
+        return headers
+
+    async def _get_client(self):
+        if self._client is None:
+            import httpx
+            self._client = httpx.AsyncClient(timeout=30.0)
+        return self._client
+
+    async def save_file(self, file_hash: str, content: bytes, extension: str) -> str:
+        ext = extension.lstrip(".")
+        if file_hash.startswith(("evidence/", "heatmaps/")):
+            path = file_hash if file_hash.endswith(f".{ext}") else f"{file_hash}.{ext}"
+        else:
+            path = f"evidence/{file_hash}.{ext}"
+
+        content_type = mimetypes.guess_type(f"file.{ext}")[0] or "application/octet-stream"
+        client = await self._get_client()
+
+        headers = self._get_headers(content_type)
+        headers["x-upsert"] = "true"
+
+        upload_url = f"{self.base_url}/storage/v1/object/{self.bucket}/{path}"
+        resp = await client.post(upload_url, content=content, headers=headers)
+        if resp.status_code not in (200, 201):
+            raise IOError(f"Failed to upload to Supabase Storage: {resp.status_code} - {resp.text}")
+
+        return path
+
+    async def get_file(self, file_path: str) -> bytes:
+        # Hybrid/legacy fallback: if file exists on local disk, read it directly
+        if os.path.isfile(file_path):
+            async with aiofiles.open(file_path, "rb") as f:
+                return await f.read()
+
+        client = await self._get_client()
+        clean_path = file_path.lstrip("/")
+
+        # Try authenticated endpoint first
+        auth_url = f"{self.base_url}/storage/v1/object/authenticated/{self.bucket}/{clean_path}"
+        headers = self._get_headers()
+        resp = await client.get(auth_url, headers=headers)
+        if resp.status_code == 200:
+            return resp.content
+
+        # Fallback to public endpoint
+        pub_url = f"{self.base_url}/storage/v1/object/public/{self.bucket}/{clean_path}"
+        resp_pub = await client.get(pub_url, headers=headers)
+        if resp_pub.status_code == 200:
+            return resp_pub.content
+
+        raise IOError(f"File not found on Supabase Storage ({clean_path}): status {resp.status_code}")
+
+    async def delete_file(self, file_path: str) -> bool:
+        if os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+
+        client = await self._get_client()
+        clean_path = file_path.lstrip("/")
+        delete_url = f"{self.base_url}/storage/v1/object/{self.bucket}/{clean_path}"
+        headers = self._get_headers()
+        resp = await client.delete(delete_url, headers=headers)
+        return resp.status_code in (200, 204)
+
+    def get_public_url(self, path: str) -> str:
+        clean_path = path.lstrip("/")
+        return f"{self.base_url}/storage/v1/object/public/{self.bucket}/{clean_path}"
+
 def get_storage_provider() -> StorageInterface:
+    has_supabase = bool(settings.SUPABASE_URL and settings.SUPABASE_KEY)
+    if settings.STORAGE_BACKEND == "supabase" or (settings.STORAGE_BACKEND != "local" and has_supabase):
+        if not has_supabase:
+            raise ValueError(
+                "STORAGE_BACKEND is configured as 'supabase', but SUPABASE_URL and SUPABASE_KEY are missing."
+            )
+        return SupabaseStorageProvider(
+            url=settings.SUPABASE_URL,
+            key=settings.SUPABASE_KEY,
+            bucket_name=settings.SUPABASE_BUCKET_NAME or "deepverify-evidence",
+        )
+
     has_r2 = bool(
         settings.R2_ACCOUNT_ID
         and settings.R2_ACCESS_KEY_ID
