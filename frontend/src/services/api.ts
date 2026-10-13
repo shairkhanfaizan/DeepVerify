@@ -1,5 +1,21 @@
-const rawBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
-export const API_BASE = rawBase.replace(/\/+$/, '');
+function resolveApiBase(): string {
+  const envBase = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+  
+  // If running in browser and NOT on localhost, ignore any localhost/127.0.0.1 env values
+  if (typeof window !== 'undefined') {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (!isLocalhost) {
+      if (!envBase || envBase.includes('localhost') || envBase.includes('127.0.0.1')) {
+        // Use relative URL so Vercel's reverse proxy automatically routes /api to Render
+        return '';
+      }
+    }
+  }
+  
+  return envBase;
+}
+
+export const API_BASE = resolveApiBase();
 
 export function getAuthToken(): string | null {
   return localStorage.getItem('dv_auth_token');
